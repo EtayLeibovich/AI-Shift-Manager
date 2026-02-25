@@ -48,7 +48,7 @@ def save_data(df):
 API_KEY = st.secrets.get("GEMINI_API_KEY", "") 
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
 # ==========================================
 # 4. ממשק המערכת
@@ -176,6 +176,5 @@ elif menu == "📊 פאנל ניהול ו-BI":
                     try:
                         res = model.generate_content(f"נתוני משמרות:\n{edited.to_string()}\nשאלה: {q}")
                         st.info(res.text)
-                    except Exception as e:
-                        st.warning("⚠️ עומס זמני על ה-AI. המתן כדקה ונסה שוב.")
-    elif pwd: st.error("סיסמה שגויה")
+                   except Exception as e:
+                     st.error(f"השגיאה האמיתית מגוגל: {e}")
