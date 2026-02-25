@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta  # הוספנו את timedelta כדי לטפל באזורי זמן
+from datetime import datetime, timedelta
 import os
 import google.generativeai as genai
 
@@ -30,25 +30,37 @@ def load_data():
 
 def save_data(df):
     """שמירה בטוחה עם ולידציה למניעת מינוסים ושורות ריקות"""
-    # 1. ניקוי שורות ריקות (NaT/None) שגורמות לקריסת הגרפים
     df = df.dropna(subset=['שם עובד', 'כניסה'])
     df = df[df['שם עובד'].astype(str).str.strip() != '']
     
-    # 2. הגנה מפני שעות שליליות - אם סה"כ שעות קטן מ-0, נהפוך אותו ל-0
     if 'סהכ שעות' in df.columns:
         df['סהכ שעות'] = df['סהכ שעות'].apply(lambda x: x if (pd.notnull(x) and x >= 0) else 0)
     
-    # 3. שמירה פיזית לקובץ (Resource Management)
     with open(FILE_PATH, 'w', encoding='utf-8', newline='') as file:
         df.to_csv(file, index=False)
 
 # ==========================================
-# 3. הגדרות AI
+# 3. הגדרות AI - גילוי מודלים דינמי
 # ==========================================
 API_KEY = st.secrets.get("GEMINI_API_KEY", "") 
+active_model_name = "לא מחובר"
+
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
+    
+    # הקוד החכם: שואל את גוגל איזה מודל פתוח לנו ובוחר אותו אוטומטית!
+    best_model = "gemini-1.5-flash" # גיבוי ברירת מחדל
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'gemini' in m.name.lower():
+                    best_model = m.name
+                    break # מצאנו אחד שעובד, עוצרים!
+    except Exception:
+        pass
+        
+    model = genai.GenerativeModel(best_model)
+    active_model_name = best_model
 
 # ==========================================
 # 4. ממשק המערכת
@@ -64,13 +76,10 @@ if menu == "⏱️ החתמת שעון":
         worker_name_raw = st.text_input("שם עובד:", placeholder="הקלד שם מלא")
         
         if worker_name_raw:
-            worker_name = worker_name_raw.strip() # ניקוי רווחים למניעת כפילויות
+            worker_name = worker_name_raw.strip() 
             df = load_data()
             
-            # בדיקה האם העובד כבר במשמרת (יציאה ריקה)
             active_shift = df[(df["שם עובד"].astype(str).str.strip() == worker_name) & (df["יציאה"].isna())]
-            
-            # ---> התיקון הקריטי: חישוב שעה מדויק לישראל, גם כשהשרת בענן! <---
             now = (datetime.utcnow() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
             
             if active_shift.empty:
@@ -113,7 +122,7 @@ elif menu == "📊 פאנל ניהול ו-BI":
         c2.metric("סה\"כ שעות שנרשמו", f"{total_hours:.1f}")
         c3.metric("משמרות חריגות (>9ש')", len(df[df["סהכ שעות"] > 9]) if not df.empty else 0)
 
-        # --- הפיצ'ר החדש: כפתורי שחרור מהיר למנהל ---
+        # --- עובדים פעילים ---
         st.markdown("---")
         st.subheader("⚡ עובדים פעילים (סגירת משמרת בלחיצת כפתור)")
         if active_count > 0:
@@ -124,7 +133,6 @@ elif menu == "📊 פאנל ניהול ו-BI":
                     st.markdown(f"**{row['שם עובד']}** (נכנס ב: {row['כניסה']})")
                 with col_btn:
                     if st.button(f"🔴 הוצא עכשיו", key=f"btn_{idx}"):
-                        # ---> התיקון הקריטי גם בכפתור המנהל! <---
                         now_str = (datetime.utcnow() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
                         df.at[idx, "יציאה"] = now_str
                         t1 = datetime.strptime(df.at[idx, "כניסה"], "%Y-%m-%d %H:%M")
@@ -149,7 +157,7 @@ elif menu == "📊 פאנל ניהול ו-BI":
             hours_per_day = df.groupby('תאריך')['סהכ שעות'].sum().reset_index()
             st.line_chart(data=hours_per_day, x='תאריך', y='סהכ שעות')
 
-        # --- עריכה וניהול משאבים (הטבלה נעולה לזמנים!) ---
+        # --- עריכה ידנית ---
         st.markdown("---")
         st.subheader("📝 מחיקת שורות וייצוא (ללא עריכת זמנים)")
         st.warning("כדי למנוע טעויות, לא ניתן להקליד שעות ידנית. למחיקת כפילויות: סמן את השורה משמאל ולחץ על פח האשפה (Delete).")
@@ -158,7 +166,7 @@ elif menu == "📊 פאנל ניהול ו-BI":
             df, 
             num_rows="dynamic", 
             use_container_width=True,
-            disabled=["כניסה", "יציאה", "סהכ שעות", "תאריך"] # חוסם לחלוטין הקלדה ידנית של שעות!
+            disabled=["כניסה", "יציאה", "סהכ שעות", "תאריך"]
         )
         if st.button("💾 שמור מחיקות / שינויי שמות"):
             save_data(edited)
@@ -170,6 +178,8 @@ elif menu == "📊 פאנל ניהול ו-BI":
 
         # --- עוזר AI ---
         with st.expander("🤖 עוזר ניהול AI"):
+            if API_KEY:
+                st.caption(f"✅ מחובר בהצלחה למנוע: `{active_model_name}`") # הוספתי אינדיקציה למודל הנבחר!
             q = st.text_input("שאל על נתוני העבודה (למשל: מי עבד הכי הרבה השבוע?)")
             if q and API_KEY:
                 with st.spinner("מנתח..."):
@@ -178,3 +188,4 @@ elif menu == "📊 פאנל ניהול ו-BI":
                         st.info(res.text)
                     except Exception as e:
                         st.error(f"השגיאה האמיתית מגוגל: {e}")
+    elif pwd: st.error("סיסמה שגויה")
