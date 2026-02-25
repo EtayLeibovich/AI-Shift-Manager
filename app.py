@@ -48,7 +48,7 @@ def save_data(df):
 API_KEY = st.secrets.get("GEMINI_API_KEY", "") 
 if API_KEY:
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-pro')
 
 # ==========================================
 # 4. ממשק המערכת
