@@ -132,7 +132,7 @@ else:
                     last_exit = worker_shifts.iloc[-1]['יציאה']
                     st.success(f"אתה מחוץ למשמרת. (יציאה אחרונה נרשמה ב: {last_exit})")
                 else:
-                    st.success("אתה מחוץ למשמרת. יום עבודה פורה!")
+                    st.success("אתה מחוץ למשמרת. יום נפלא!")
                     
                 if st.button("🟢 כניסה למשמרת עכשיו", type="primary"):
                     new_row = pd.DataFrame([{"שם עובד": worker_name, "כניסה": now_str, "יציאה": None, "סהכ שעות": None}])
