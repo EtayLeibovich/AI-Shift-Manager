@@ -37,10 +37,8 @@ def save_data(df):
     with open(FILE_PATH, 'w', encoding='utf-8', newline='') as file:
         df.to_csv(file, index=False)
 
-# פונקציות לניהול רשימת העובדים המורשים
 def load_workers():
     if not os.path.exists(WORKERS_PATH):
-        # אתחול עם כמה שמות ברירת מחדל כדי שתוכל לבדוק את זה
         df = pd.DataFrame([{"שם עובד": "איתי"}, {"שם עובד": "אורלי"}])
         save_workers(df)
         return df
@@ -62,7 +60,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.user_name = ""
 
 # ==========================================
-# 4. מסך התחברות (Login Gateway - עכשיו מאובטח!)
+# 4. מסך התחברות (Login Gateway)
 # ==========================================
 if not st.session_state.logged_in:
     st.markdown("<div style='text-align: center; margin-bottom: 20px;'><h1>🔐 כניסה למערכת שעות</h1></div>", unsafe_allow_html=True)
@@ -75,7 +73,6 @@ if not st.session_state.logged_in:
             emp_name = st.text_input("שם עובד / תעודת זהות:", placeholder="הקלד שם מדויק...")
             if st.button("🚪 היכנס כעובד", type="primary"):
                 if emp_name.strip():
-                    # --- בדיקת האבטחה (Whitelist Verification) ---
                     workers_df = load_workers()
                     allowed_workers = workers_df['שם עובד'].astype(str).str.strip().tolist()
                     
@@ -147,11 +144,11 @@ else:
                     st.rerun()
 
     # ------------------------------------------
-    # מבט מנהל (Manager View) - הרשאות מלאות
+    # מבט מנהל (Manager View)
     # ------------------------------------------
     elif st.session_state.role == "manager":
         st.title("🚀 פאנל ניהול עסק מורחב")
-        menu = st.sidebar.radio("ניווט מנהל:", ["📊 דשבורד ונוכחות", "👥 ניהול עובדים מורשים", "⏱️ החתמה ידנית", "🤖 עוזר AI"])
+        menu = st.sidebar.radio("ניווט מנהל:", ["📊 דשבורד ונוכחות", "⏱️ החתמה ותיקון שעות ידני", "👥 ניהול עובדים מורשים", "🤖 עוזר AI"])
         
         if not df.empty:
             df['תאריך'] = pd.to_datetime(df['כניסה'], errors='coerce').dt.date
@@ -167,7 +164,7 @@ else:
             c3.metric("משמרות חריגות (>9ש')", len(df[df["סהכ שעות"] > 9]) if not df.empty else 0)
 
             st.markdown("---")
-            st.subheader("⚡ עובדים פעילים (סגירת משמרת בלחיצת כפתור)")
+            st.subheader("⚡ עובדים פעילים (סגירת משמרת מיידית)")
             if active_count > 0:
                 for idx, row in active_workers_df.iterrows():
                     col_name, col_btn = st.columns([3, 1])
@@ -185,20 +182,67 @@ else:
                 st.info("אין עובדים במשמרת כרגע.")
 
             st.markdown("---")
-            st.subheader("📝 מאגר נתונים מלא (עריכה חיה למנהלים)")
+            st.subheader("📝 מאגר נתונים מלא")
             edited = st.data_editor(df, num_rows="dynamic", use_container_width=True, disabled=["כניסה", "יציאה", "סהכ שעות", "תאריך"])
-            if st.button("💾 שמור מחיקות/שינויים ביומן משמרות"):
+            if st.button("💾 שמור שינויים בבסיס הנתונים"):
                 save_data(edited)
                 st.success("הנתונים נשמרו בהצלחה.")
                 st.rerun()
 
-        # הפיצ'ר החדש: ניהול מורשים
+        # הפיצ'ר החדש שביקשת - תיקון ידני עם שעון דינמי!
+        elif menu == "⏱️ החתמה ותיקון שעות ידני":
+            st.subheader("תיקון נוכחות: סגירה/פתיחה של משמרת בזמן מותאם")
+            st.write("כאן המנהל יכול להזין שעה ותאריך מדוייקים (לדוגמה: לעובד ששכח להעביר כרטיס אתמול).")
+            
+            workers_list = load_workers()['שם עובד'].tolist()
+            if not workers_list:
+                st.warning("אין עובדים במערכת. אנא הוסף עובדים בלשונית 'ניהול עובדים מורשים'.")
+            else:
+                worker_name_raw = st.selectbox("1️⃣ בחר עובד:", workers_list)
+                
+                st.markdown("##### 2️⃣ בחר תאריך ושעה לביצוע הפעולה:")
+                col_d, col_t = st.columns(2)
+                with col_d:
+                    selected_date = st.date_input("תאריך", datetime.now().date())
+                with col_t:
+                    selected_time = st.time_input("שעה", datetime.now().time())
+                    
+                # מחברים את התאריך והשעה לפורמט שהמערכת עובדת איתו
+                custom_dt_str = datetime.combine(selected_date, selected_time).strftime("%Y-%m-%d %H:%M")
+                
+                st.markdown("---")
+                
+                if worker_name_raw:
+                    active_shift = df[(df["שם עובד"].astype(str).str.strip() == worker_name_raw) & (df["יציאה"].isna())]
+                    
+                    if active_shift.empty:
+                        st.info(f"לעובד **{worker_name_raw}** אין משמרת פתוחה כרגע.")
+                        if st.button(f"🟢 פתח משמרת החל מ- {custom_dt_str}", use_container_width=True):
+                            new_row = pd.DataFrame([{"שם עובד": worker_name_raw, "כניסה": custom_dt_str, "יציאה": None, "סהכ שעות": None}])
+                            save_data(pd.concat([df, new_row], ignore_index=True))
+                            st.success(f"נפתחה משמרת ל-{worker_name_raw} בתאריך {custom_dt_str}")
+                            st.rerun()
+                    else:
+                        entry_time = active_shift.iloc[0]['כניסה']
+                        st.warning(f"שים לב: לעובד **{worker_name_raw}** יש משמרת פתוחה שהחלה ב- {entry_time}")
+                        if st.button(f"🔴 סגור משמרת בתאריך ושעה שנבחרו ({custom_dt_str})", type="primary", use_container_width=True):
+                            idx = active_shift.index[-1]
+                            t1 = datetime.strptime(entry_time, "%Y-%m-%d %H:%M")
+                            t2 = datetime.combine(selected_date, selected_time)
+                            
+                            # הגנה מפני שעות שליליות!
+                            if t2 < t1:
+                                st.error("❌ שגיאה: זמן היציאה שבחרת מוקדם מזמן הכניסה של העובד! אי אפשר לסיים משמרת לפני שהתחילה.")
+                            else:
+                                df.at[idx, "יציאה"] = custom_dt_str
+                                df.at[idx, "סהכ שעות"] = round((t2 - t1).total_seconds() / 3600, 2)
+                                save_data(df)
+                                st.success("משמרת נסגרה ועודכנה בהצלחה!")
+                                st.rerun()
+
         elif menu == "👥 ניהול עובדים מורשים":
             st.subheader("🔒 רשימת גישה: מי מורשה להחתים שעון?")
-            st.write("רק עובדים שמופיעים ברשימה זו יוכלו להתחבר למערכת ממסך הכניסה.")
-            
             workers_df = load_workers()
-            
             col_add1, col_add2 = st.columns([3, 1])
             with col_add1:
                 new_worker = st.text_input("הוסף עובד חדש לרשימה (שם מלא / ת.ז):")
@@ -215,32 +259,11 @@ else:
                             st.warning("עובד זה כבר קיים במערכת.")
             
             st.markdown("---")
-            st.write("**עריכה או הסרה של עובדים:** (מחק שורה כדי לשלול גישה)")
             edited_workers = st.data_editor(workers_df, num_rows="dynamic", use_container_width=True)
             if st.button("💾 שמור רשימת עובדים מעודכנת"):
                 save_workers(edited_workers)
                 st.success("הרשאות הגישה עודכנו בהצלחה.")
                 st.rerun()
-
-        elif menu == "⏱️ החתמה ידנית":
-            st.subheader("תיקון נוכחות ידני (למנהלים בלבד)")
-            worker_name_raw = st.selectbox("בחר עובד (מרשימת המורשים):", load_workers()['שם עובד'].tolist())
-            if worker_name_raw:
-                active_shift = df[(df["שם עובד"].astype(str).str.strip() == worker_name_raw) & (df["יציאה"].isna())]
-                if active_shift.empty:
-                    if st.button(f"🟢 פתח משמרת ל-{worker_name_raw}"):
-                        new_row = pd.DataFrame([{"שם עובד": worker_name_raw, "כניסה": now_str, "יציאה": None, "סהכ שעות": None}])
-                        save_data(pd.concat([df, new_row], ignore_index=True))
-                        st.rerun()
-                else:
-                    if st.button(f"🔴 סגור משמרת ל-{worker_name_raw}"):
-                        idx = active_shift.index[-1]
-                        df.at[idx, "יציאה"] = now_str
-                        t1 = datetime.strptime(df.at[idx, "כניסה"], "%Y-%m-%d %H:%M")
-                        t2 = datetime.strptime(now_str, "%Y-%m-%d %H:%M")
-                        df.at[idx, "סהכ שעות"] = round((t2 - t1).total_seconds() / 3600, 2)
-                        save_data(df)
-                        st.rerun()
 
         elif menu == "🤖 עוזר AI":
             st.subheader("ניתוח פעילות עם Google Gemini")
