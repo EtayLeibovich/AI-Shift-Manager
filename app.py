@@ -186,16 +186,54 @@ else:
             else:
                 st.info("אין עובדים במשמרת כרגע.")
 
+            # ==========================================
+            # הפיצ'ר החדש: סינון חכם (Smart Filters)
+            # ==========================================
             st.markdown("---")
-            st.subheader("📈 דוחות שעות לפי חיתוך (יומי / שבועי / חודשי)")
+            st.subheader("🔎 חיפוש וסינון חכם (BI)")
+            
             if not df.empty and 'סהכ שעות' in df.columns:
                 valid_df = df.copy()
                 valid_df['datetime'] = pd.to_datetime(valid_df['כניסה'], errors='coerce')
-                valid_df = valid_df.dropna(subset=['datetime', 'סהכ שעות'])
+                valid_df = valid_df.dropna(subset=['datetime'])
                 
                 if not valid_df.empty:
+                    # יצירת עמודות עזר חכמות
                     valid_df['תאריך יומי'] = valid_df['datetime'].dt.date
                     valid_df['חודש'] = valid_df['datetime'].dt.strftime('%Y-%m')
+                    
+                    # ממיר את המספר של היום בשבוע לאותיות בעברית (0=שני, 6=ראשון)
+                    day_mapping = {6: "א'", 0: "ב'", 1: "ג'", 2: "ד'", 3: "ה'", 4: "ו'", 5: "ש'"}
+                    valid_df['יום בשבוע'] = valid_df['datetime'].dt.weekday.map(day_mapping)
+                    
+                    # שורת החיתוכים
+                    col_f1, col_f2, col_f3 = st.columns(3)
+                    with col_f1:
+                        all_workers = ["הכל"] + valid_df['שם עובד'].unique().tolist()
+                        selected_worker = st.selectbox("👤 סנן לפי עובד:", all_workers)
+                    with col_f2:
+                        all_months = ["הכל"] + sorted(valid_df['חודש'].unique().tolist(), reverse=True)
+                        selected_month = st.selectbox("📅 סנן לפי חודש:", all_months)
+                    with col_f3:
+                        days_order = ["הכל", "א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"]
+                        selected_day = st.selectbox("📆 סנן לפי יום:", days_order)
+                        
+                    # הפעלת הסינונים על הטבלה
+                    filtered_df = valid_df.copy()
+                    if selected_worker != "הכל":
+                        filtered_df = filtered_df[filtered_df['שם עובד'] == selected_worker]
+                    if selected_month != "הכל":
+                        filtered_df = filtered_df[filtered_df['חודש'] == selected_month]
+                    if selected_day != "הכל":
+                        filtered_df = filtered_df[filtered_df['יום בשבוע'] == selected_day]
+                        
+                    st.write(f"**מציג {len(filtered_df)} משמרות שעונות על תנאי הסינון:**")
+                    # מציגים למנהל רק את העמודות שרלוונטיות ונוחות לקריאה
+                    st.dataframe(filtered_df[['שם עובד', 'כניסה', 'יציאה', 'סהכ שעות', 'יום בשבוע', 'חודש']].sort_values(by='כניסה', ascending=False), use_container_width=True)
+
+                    # דוחות הסיכום הכלליים (נשאר כפי שהיה לבקשתך הקודמת)
+                    st.markdown("---")
+                    st.subheader("📈 דוחות שעות מסכמים (ללא סינון)")
                     
                     def get_sunday(dt):
                         days_to_subtract = (dt.weekday() + 1) % 7 
@@ -223,16 +261,13 @@ else:
                 st.info("אין נתונים זמינים.")
 
             st.markdown("---")
-            st.subheader("📝 מאגר נתונים מלא")
+            st.subheader("📝 מאגר נתונים מלא לעריכה ישירה")
             edited = st.data_editor(df, num_rows="dynamic", use_container_width=True, disabled=["כניסה", "יציאה", "סהכ שעות"])
             if st.button("💾 שמור שינויים בבסיס הנתונים"):
                 save_data(edited)
                 st.success("הנתונים נשמרו בהצלחה.")
                 st.rerun()
 
-        # ==========================================
-        # הפיצ'ר החדש והחכם - ניהול נוכחות וגם היסטוריה!
-        # ==========================================
         elif menu == "⏱️ החתמה ותיקון שעות":
             st.subheader("תיקון נוכחות: סגירה/פתיחה ועריכת היסטוריה")
             workers_list = load_workers()['שם עובד'].tolist()
@@ -240,13 +275,10 @@ else:
                 st.warning("אין עובדים במערכת. אנא הוסף עובדים בלשונית 'ניהול עובדים'.")
             else:
                 worker_name_raw = st.selectbox("1️⃣ בחר עובד:", workers_list)
-                
-                # המנהל בוחר עכשיו מה הוא רוצה לעשות!
                 action_type = st.radio("2️⃣ סוג פעולה:", ["פתיחה / סגירה של משמרת נוכחית", "עריכת משמרת שהסתיימה (תיקון שעות עבר)"], horizontal=True)
                 
                 st.markdown("---")
                 
-                # --- אפשרות א': ניהול משמרת קיימת / פתיחת חדשה ---
                 if action_type == "פתיחה / סגירה של משמרת נוכחית":
                     st.markdown("##### בחר תאריך ושעה לביצוע הפעולה:")
                     col_d, col_t = st.columns(2)
@@ -284,15 +316,12 @@ else:
                                     st.success("משמרת נסגרה ועודכנה בהצלחה!")
                                     st.rerun()
 
-                # --- אפשרות ב': עריכת משמרת שהסתיימה (הפיצ'ר החדש!) ---
                 elif action_type == "עריכת משמרת שהסתיימה (תיקון שעות עבר)":
-                    # שולפים רק משמרות סגורות של אותו עובד
                     closed_shifts = df[(df["שם עובד"].astype(str).str.strip() == worker_name_raw) & (df["יציאה"].notna())]
                     
                     if closed_shifts.empty:
                         st.info("אין משמרות קודמות שהסתיימו לעובד זה.")
                     else:
-                        # מכינים רשימה יפה לבחירה לפי שעות העבודה
                         shift_dict = {idx: f"כניסה: {row['כניסה']} | יציאה: {row['יציאה']} ({row['סהכ שעות']} שעות)" for idx, row in closed_shifts.iterrows()}
                         selected_shift_idx = st.selectbox("בחירת משמרת לעריכה:", options=list(shift_dict.keys()), format_func=lambda x: shift_dict[x])
                         
@@ -317,11 +346,8 @@ else:
                         new_out_str = datetime.combine(new_out_date, new_out_time).strftime("%Y-%m-%d %H:%M")
                         
                         st.markdown("---")
-                        
-                        # --- מנגנון ההגנה שביקשת (Confirmation Checkbox) ---
                         confirm_edit = st.checkbox("⚠️ אני מאשר/ת שאני רוצה לדרוס את נתוני המשמרת הקיימת ולעדכן לשעות החדשות")
                         
-                        # הכפתור פעיל (disabled=False) אך ורק אם המשתמש סימן V בתיבה!
                         if st.button("💾 עדכן משמרת ושמור נתונים", type="primary", disabled=not confirm_edit):
                             t1 = datetime.strptime(new_in_str, "%Y-%m-%d %H:%M")
                             t2 = datetime.strptime(new_out_str, "%Y-%m-%d %H:%M")
