@@ -176,5 +176,5 @@ elif menu == "📊 פאנל ניהול ו-BI":
                     try:
                         res = model.generate_content(f"נתוני משמרות:\n{edited.to_string()}\nשאלה: {q}")
                         st.info(res.text)
-                   except Exception as e:
-                     st.error(f"השגיאה האמיתית מגוגל: {e}")
+                    except Exception as e:
+                        st.error(f"השגיאה האמיתית מגוגל: {e}")
