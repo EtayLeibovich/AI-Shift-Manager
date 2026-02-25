@@ -18,7 +18,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. ניהול משאבים
+# 2. ניהול משאבים קפדני (with open)
 # ==========================================
 FILE_PATH = "attendance.csv"
 WORKERS_PATH = "workers.csv"
@@ -132,7 +132,7 @@ else:
                     last_exit = worker_shifts.iloc[-1]['יציאה']
                     st.success(f"אתה מחוץ למשמרת. (יציאה אחרונה נרשמה ב: {last_exit})")
                 else:
-                    st.success("אתה מחוץ למשמרת. יום נפלא!")
+                    st.success("אתה מחוץ למשמרת. יום עבודה פורה!")
                     
                 if st.button("🟢 כניסה למשמרת עכשיו", type="primary"):
                     new_row = pd.DataFrame([{"שם עובד": worker_name, "כניסה": now_str, "יציאה": None, "סהכ שעות": None}])
@@ -165,7 +165,7 @@ else:
             
             c1, c2, c3 = st.columns(3)
             c1.metric("עובדים כעת", active_count)
-            c2.metric("סה\"כ שעות שנרשמו (היסטורי)", f"{total_hours:.1f}")
+            c2.metric("סה\"כ שעות במערכת", f"{total_hours:.1f}")
             c3.metric("משמרות חריגות (>9ש')", len(df[df["סהכ שעות"] > 9]) if not df.empty else 0)
 
             st.markdown("---")
@@ -187,10 +187,10 @@ else:
                 st.info("אין עובדים במשמרת כרגע.")
 
             # ==========================================
-            # הפיצ'ר החדש: סינון חכם (Smart Filters)
+            # הפיצ'ר החדש והמשודרג: סיכומי שעות דינמיים לפי בחירה
             # ==========================================
             st.markdown("---")
-            st.subheader("🔎 חיפוש וסינון חכם (BI)")
+            st.subheader("🔎 מחשבון שעות וסינון חכם")
             
             if not df.empty and 'סהכ שעות' in df.columns:
                 valid_df = df.copy()
@@ -198,72 +198,63 @@ else:
                 valid_df = valid_df.dropna(subset=['datetime'])
                 
                 if not valid_df.empty:
-                    # יצירת עמודות עזר חכמות
                     valid_df['תאריך יומי'] = valid_df['datetime'].dt.date
                     valid_df['חודש'] = valid_df['datetime'].dt.strftime('%Y-%m')
                     
-                    # ממיר את המספר של היום בשבוע לאותיות בעברית (0=שני, 6=ראשון)
                     day_mapping = {6: "א'", 0: "ב'", 1: "ג'", 2: "ד'", 3: "ה'", 4: "ו'", 5: "ש'"}
                     valid_df['יום בשבוע'] = valid_df['datetime'].dt.weekday.map(day_mapping)
-                    
-                    # שורת החיתוכים
-                    col_f1, col_f2, col_f3 = st.columns(3)
-                    with col_f1:
-                        all_workers = ["הכל"] + valid_df['שם עובד'].unique().tolist()
-                        selected_worker = st.selectbox("👤 סנן לפי עובד:", all_workers)
-                    with col_f2:
-                        all_months = ["הכל"] + sorted(valid_df['חודש'].unique().tolist(), reverse=True)
-                        selected_month = st.selectbox("📅 סנן לפי חודש:", all_months)
-                    with col_f3:
-                        days_order = ["הכל", "א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"]
-                        selected_day = st.selectbox("📆 סנן לפי יום:", days_order)
-                        
-                    # הפעלת הסינונים על הטבלה
-                    filtered_df = valid_df.copy()
-                    if selected_worker != "הכל":
-                        filtered_df = filtered_df[filtered_df['שם עובד'] == selected_worker]
-                    if selected_month != "הכל":
-                        filtered_df = filtered_df[filtered_df['חודש'] == selected_month]
-                    if selected_day != "הכל":
-                        filtered_df = filtered_df[filtered_df['יום בשבוע'] == selected_day]
-                        
-                    st.write(f"**מציג {len(filtered_df)} משמרות שעונות על תנאי הסינון:**")
-                    # מציגים למנהל רק את העמודות שרלוונטיות ונוחות לקריאה
-                    st.dataframe(filtered_df[['שם עובד', 'כניסה', 'יציאה', 'סהכ שעות', 'יום בשבוע', 'חודש']].sort_values(by='כניסה', ascending=False), use_container_width=True)
-
-                    # דוחות הסיכום הכלליים (נשאר כפי שהיה לבקשתך הקודמת)
-                    st.markdown("---")
-                    st.subheader("📈 דוחות שעות מסכמים (ללא סינון)")
                     
                     def get_sunday(dt):
                         days_to_subtract = (dt.weekday() + 1) % 7 
                         return (dt - timedelta(days=days_to_subtract)).date()
                     
                     valid_df['שבוע (מתחיל בראשון)'] = valid_df['datetime'].apply(get_sunday)
-
-                    report_type = st.radio("בחר תצוגת סיכום שעות:", ["סיכום יומי", "סיכום שבועי", "סיכום חודשי"], horizontal=True)
                     
-                    if report_type == "סיכום יומי":
-                        summary = valid_df.groupby(['תאריך יומי', 'שם עובד'])['סהכ שעות'].sum().reset_index()
-                        st.dataframe(summary.sort_values(by='תאריך יומי', ascending=False), use_container_width=True)
+                    # הפילטרים למנהל
+                    st.write("בחר את חיתוך הנתונים הרצוי כדי לראות סכום שעות מדויק:")
+                    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+                    with col_f1:
+                        all_workers = ["הכל"] + valid_df['שם עובד'].unique().tolist()
+                        selected_worker = st.selectbox("👤 בחר עובד:", all_workers)
+                    with col_f2:
+                        all_months = ["הכל"] + sorted(valid_df['חודש'].unique().tolist(), reverse=True)
+                        selected_month = st.selectbox("📅 בחר חודש:", all_months)
+                    with col_f3:
+                        all_weeks = ["הכל"] + sorted(valid_df['שבוע (מתחיל בראשון)'].astype(str).unique().tolist(), reverse=True)
+                        selected_week = st.selectbox("🗓️ שבוע (מתחיל ב-):", all_weeks)
+                    with col_f4:
+                        days_order = ["הכל", "א'", "ב'", "ג'", "ד'", "ה'", "ו'", "ש'"]
+                        selected_day = st.selectbox("📆 יום בשבוע:", days_order)
                         
-                    elif report_type == "סיכום שבועי":
-                        summary = valid_df.groupby(['שבוע (מתחיל בראשון)', 'שם עובד'])['סהכ שעות'].sum().reset_index()
-                        summary.rename(columns={'שבוע (מתחיל בראשון)': 'תחילת שבוע (יום א\')'}, inplace=True)
-                        st.dataframe(summary.sort_values(by="תחילת שבוע (יום א')", ascending=False), use_container_width=True)
+                    # סינון הנתונים בזמן אמת
+                    filtered_df = valid_df.copy()
+                    if selected_worker != "הכל":
+                        filtered_df = filtered_df[filtered_df['שם עובד'] == selected_worker]
+                    if selected_month != "הכל":
+                        filtered_df = filtered_df[filtered_df['חודש'] == selected_month]
+                    if selected_week != "הכל":
+                        filtered_df = filtered_df[filtered_df['שבוע (מתחיל בראשון)'].astype(str) == selected_week]
+                    if selected_day != "הכל":
+                        filtered_df = filtered_df[filtered_df['יום בשבוע'] == selected_day]
                         
-                    elif report_type == "סיכום חודשי":
-                        summary = valid_df.groupby(['חודש', 'שם עובד'])['סהכ שעות'].sum().reset_index()
-                        st.dataframe(summary.sort_values(by='חודש', ascending=False), use_container_width=True)
+                    # חישוב הסכום של הטבלה המסוננת
+                    total_filtered_hours = filtered_df['סהכ שעות'].sum()
+                    
+                    # הצגת המספר הגדול שביקשת!
+                    st.success(f"🎯 סה\"כ שעות עבודה לפי הסינון הנוכחי: **{total_filtered_hours:.2f}** שעות")
+                    
+                    st.write(f"**מציג {len(filtered_df)} משמרות שעונות על התנאים:**")
+                    st.dataframe(filtered_df[['שם עובד', 'כניסה', 'יציאה', 'סהכ שעות', 'יום בשבוע', 'חודש', 'שבוע (מתחיל בראשון)']].sort_values(by='כניסה', ascending=False), use_container_width=True)
+
                 else:
                     st.info("עדיין אין משמרות סגורות להצגת סיכומים.")
             else:
                 st.info("אין נתונים זמינים.")
 
             st.markdown("---")
-            st.subheader("📝 מאגר נתונים מלא לעריכה ישירה")
+            st.subheader("📝 מאגר נתונים מלא לעריכה מהירה")
             edited = st.data_editor(df, num_rows="dynamic", use_container_width=True, disabled=["כניסה", "יציאה", "סהכ שעות"])
-            if st.button("💾 שמור שינויים בבסיס הנתונים"):
+            if st.button("💾 שמור מחיקות / שינויי שמות"):
                 save_data(edited)
                 st.success("הנתונים נשמרו בהצלחה.")
                 st.rerun()
