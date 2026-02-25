@@ -19,6 +19,7 @@ st.markdown("""
 
 # ==========================================
 # 2. ניהול משאבים (נוכחות + רשימת מורשים)
+# הקפדה יתרה על הקצאות וסגירת קבצים עם with
 # ==========================================
 FILE_PATH = "attendance.csv"
 WORKERS_PATH = "workers.csv"
@@ -109,7 +110,9 @@ else:
         st.rerun()
         
     df = load_data()
-    now_str = (datetime.utcnow() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
+    # זמן ישראל (UTC+2)
+    ist_now = datetime.utcnow() + timedelta(hours=2)
+    now_str = ist_now.strftime("%Y-%m-%d %H:%M")
 
     # ------------------------------------------
     # מבט עובד זוטר (Worker View)
@@ -189,10 +192,9 @@ else:
                 st.success("הנתונים נשמרו בהצלחה.")
                 st.rerun()
 
-        # הפיצ'ר החדש שביקשת - תיקון ידני עם שעון דינמי!
         elif menu == "⏱️ החתמה ותיקון שעות ידני":
             st.subheader("תיקון נוכחות: סגירה/פתיחה של משמרת בזמן מותאם")
-            st.write("כאן המנהל יכול להזין שעה ותאריך מדוייקים (לדוגמה: לעובד ששכח להעביר כרטיס אתמול).")
+            st.write("כאן המנהל יכול להזין שעה ותאריך מדוייקים.")
             
             workers_list = load_workers()['שם עובד'].tolist()
             if not workers_list:
@@ -203,11 +205,11 @@ else:
                 st.markdown("##### 2️⃣ בחר תאריך ושעה לביצוע הפעולה:")
                 col_d, col_t = st.columns(2)
                 with col_d:
-                    selected_date = st.date_input("תאריך", datetime.now().date())
+                    selected_date = st.date_input("תאריך", ist_now.date())
                 with col_t:
-                    selected_time = st.time_input("שעה", datetime.now().time())
+                    # התיקון שביקשת: step=60 מאפשר בחירה ברמת הדקה, והזמן מוצג לפי שעון ישראל
+                    selected_time = st.time_input("שעה", ist_now.time(), step=60)
                     
-                # מחברים את התאריך והשעה לפורמט שהמערכת עובדת איתו
                 custom_dt_str = datetime.combine(selected_date, selected_time).strftime("%Y-%m-%d %H:%M")
                 
                 st.markdown("---")
@@ -230,7 +232,6 @@ else:
                             t1 = datetime.strptime(entry_time, "%Y-%m-%d %H:%M")
                             t2 = datetime.combine(selected_date, selected_time)
                             
-                            # הגנה מפני שעות שליליות!
                             if t2 < t1:
                                 st.error("❌ שגיאה: זמן היציאה שבחרת מוקדם מזמן הכניסה של העובד! אי אפשר לסיים משמרת לפני שהתחילה.")
                             else:
