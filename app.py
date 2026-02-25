@@ -41,7 +41,7 @@ def save_data(df):
 # ==========================================
 # 3. הגדרות AI
 # ==========================================
-API_KEY = "" 
+API_KEY = st.secrets.get("GEMINI_API_KEY", "") 
 if API_KEY:
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-2.0-flash')
