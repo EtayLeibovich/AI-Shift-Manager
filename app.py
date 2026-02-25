@@ -1,6 +1,6 @@
 ﻿import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta  # הוספנו את timedelta כדי לטפל באזורי זמן
 import os
 import google.generativeai as genai
 
@@ -29,12 +29,16 @@ def load_data():
     return df
 
 def save_data(df):
-    """שמירה בטוחה + מחיקת שורות ריקות אוטומטית"""
-    # מחיקת שורות שהן לגמרי None או ריקות (כדי למנוע שגיאות מהטבלה)
-    df = df.dropna(subset=['שם עובד'])
+    """שמירה בטוחה עם ולידציה למניעת מינוסים ושורות ריקות"""
+    # 1. ניקוי שורות ריקות (NaT/None) שגורמות לקריסת הגרפים
+    df = df.dropna(subset=['שם עובד', 'כניסה'])
     df = df[df['שם עובד'].astype(str).str.strip() != '']
-    df = df[df['שם עובד'].astype(str).str.strip() != 'None']
     
+    # 2. הגנה מפני שעות שליליות - אם סה"כ שעות קטן מ-0, נהפוך אותו ל-0
+    if 'סהכ שעות' in df.columns:
+        df['סהכ שעות'] = df['סהכ שעות'].apply(lambda x: x if (pd.notnull(x) and x >= 0) else 0)
+    
+    # 3. שמירה פיזית לקובץ (Resource Management)
     with open(FILE_PATH, 'w', encoding='utf-8', newline='') as file:
         df.to_csv(file, index=False)
 
@@ -65,7 +69,9 @@ if menu == "⏱️ החתמת שעון":
             
             # בדיקה האם העובד כבר במשמרת (יציאה ריקה)
             active_shift = df[(df["שם עובד"].astype(str).str.strip() == worker_name) & (df["יציאה"].isna())]
-            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            
+            # ---> התיקון הקריטי: חישוב שעה מדויק לישראל, גם כשהשרת בענן! <---
+            now = (datetime.utcnow() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
             
             if active_shift.empty:
                 if st.button("🟢 כניסה למשמרת", type="primary"):
@@ -118,13 +124,14 @@ elif menu == "📊 פאנל ניהול ו-BI":
                     st.markdown(f"**{row['שם עובד']}** (נכנס ב: {row['כניסה']})")
                 with col_btn:
                     if st.button(f"🔴 הוצא עכשיו", key=f"btn_{idx}"):
-                        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        # ---> התיקון הקריטי גם בכפתור המנהל! <---
+                        now_str = (datetime.utcnow() + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M")
                         df.at[idx, "יציאה"] = now_str
                         t1 = datetime.strptime(df.at[idx, "כניסה"], "%Y-%m-%d %H:%M")
                         t2 = datetime.strptime(now_str, "%Y-%m-%d %H:%M")
                         df.at[idx, "סהכ שעות"] = round((t2 - t1).total_seconds() / 3600, 2)
                         save_data(df)
-                        st.success(f"המשמרת נסגרה!")
+                        st.success(f"המשמרת נסגרה בהצלחה!")
                         st.rerun()
         else:
             st.info("אין עובדים במשמרת כרגע.")
