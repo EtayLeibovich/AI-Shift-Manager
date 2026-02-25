@@ -5,120 +5,170 @@ import os
 import google.generativeai as genai
 
 # ==========================================
-# הגדרות מודל ה-AI
+# 1. הגדרות ועיצוב (UI/UX)
 # ==========================================
-# לפני ה-PUSH לגיטאהב: וודא שהמפתח האמיתי שלך לא נמצא כאן!
-API_KEY = " "
+st.set_page_config(page_title="AI Operational Manager", page_icon="🚀", layout="wide")
 
-if API_KEY and API_KEY != "YOUR_API_KEY_HERE":
+st.markdown("""
+    <style>
+    .stButton>button { width: 100%; border-radius: 10px; font-weight: bold; height: 50px; }
+    .status-card { background-color: #f8f9fa; border-radius: 10px; padding: 20px; border: 1px solid #dee2e6; }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 2. ניהול משאבים וניקוי נתונים
+# ==========================================
+FILE_PATH = "attendance.csv"
+
+def load_data():
+    if not os.path.exists(FILE_PATH):
+        return pd.DataFrame(columns=["שם עובד", "כניסה", "יציאה", "סהכ שעות"])
+    with open(FILE_PATH, 'r', encoding='utf-8') as file:
+        df = pd.read_csv(file)
+    return df
+
+def save_data(df):
+    """שמירה בטוחה + מחיקת שורות ריקות אוטומטית"""
+    # מחיקת שורות שהן לגמרי None או ריקות (כדי למנוע שגיאות מהטבלה)
+    df = df.dropna(subset=['שם עובד'])
+    df = df[df['שם עובד'].astype(str).str.strip() != '']
+    df = df[df['שם עובד'].astype(str).str.strip() != 'None']
+    
+    with open(FILE_PATH, 'w', encoding='utf-8', newline='') as file:
+        df.to_csv(file, index=False)
+
+# ==========================================
+# 3. הגדרות AI
+# ==========================================
+API_KEY = "" 
+if API_KEY:
     genai.configure(api_key=API_KEY)
-    model = genai.GenerativeModel('gemini-2.5-flash')
-
-st.title("מערכת ניהול משמרות חכמה 🍔")
-
-menu = st.sidebar.selectbox("תפריט מערכת", ["החתמת שעון (עובדים)", "צפייה בנתונים (מנהל)"])
-
-# פונקציית עזר לבדיקת סטטוס אחרון - ניהול משאבים בטוח
-def get_last_status(worker_name):
-    if not os.path.exists("attendance.csv"):
-        return None
-    with open("attendance.csv", "r", encoding="utf-8") as file:
-        lines = file.readlines()
-        for line in reversed(lines):
-            parts = line.strip().split(',')
-            if parts[0] == worker_name:
-                return parts[2]
-    return None
+    model = genai.GenerativeModel('gemini-2.0-flash')
 
 # ==========================================
-# מסך החתמת שעון
+# 4. ממשק המערכת
 # ==========================================
-if menu == "החתמת שעון (עובדים)":
-    st.subheader("החתמת שעות עבודה")
-    name = st.text_input("הכנס את שמך:").strip()
-    
-    if name:
-        last_status = get_last_status(name)
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("🟢 כניסה למשמרת"):
-                if last_status == "Clock-In":
-                    st.error(f"שגיאה: {name}, כבר ביצעת כניסה!")
-                else:
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    with open("attendance.csv", "a", encoding="utf-8") as file:
-                        file.write(f"{name},{now},Clock-In\n")
-                    st.success(f"כניסה נרשמה ב-{now}")
-                    st.rerun()
-                    
-        with col2:
-            if st.button("🔴 יציאה ממשמרת"):
-                if last_status == "Clock-In":
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    with open("attendance.csv", "a", encoding="utf-8") as file:
-                        file.write(f"{name},{now},Clock-Out\n")
-                    st.success(f"יציאה נרשמה ב-{now}")
-                    st.rerun()
-                else:
-                    st.error("שגיאה: לא ניתן לבצע יציאה ללא כניסה פעילה.")
-    else:
-        st.info("אנא הכנס שם כדי להמשיך.")
+st.title("AI Operational Shift Manager 🚀")
 
-# ==========================================
-# מסך מנהל משולב AI
-# ==========================================
-elif menu == "צפייה בנתונים (מנהל)":
-    st.subheader("טבלת משמרות וחישוב שעות")
-    
-    if os.path.exists("attendance.csv"):
-        with open("attendance.csv", "r", encoding="utf-8") as file:
-            df = pd.read_csv(file, names=["שם עובד", "תאריך ושעה", "פעולה"])
+menu = st.sidebar.radio("ניווט", ["⏱️ החתמת שעון", "📊 פאנל ניהול ו-BI"])
+
+if menu == "⏱️ החתמת שעון":
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.subheader("כניסה/יציאה מהירה")
+        worker_name_raw = st.text_input("שם עובד:", placeholder="הקלד שם מלא")
         
-        df['תאריך ושעה'] = pd.to_datetime(df['תאריך ושעה'])
-        
-        shifts = []
-        for worker_name, group in df.groupby("שם עובד"):
-            in_time = None
-            for _, row in group.iterrows():
-                if row["פעולה"] == "Clock-In":
-                    in_time = row["תאריך ושעה"]
-                elif row["פעולה"] == "Clock-Out" and in_time is not None:
-                    out_time = row["תאריך ושעה"]
-                    hours = (out_time - in_time).total_seconds() / 3600
-                    shifts.append({
-                        "שם עובד": worker_name, 
-                        "כניסה": in_time.strftime("%Y-%m-%d %H:%M"), 
-                        "יציאה": out_time.strftime("%Y-%m-%d %H:%M"), 
-                        "סה\"כ שעות": round(hours, 2)
-                    })
-                    in_time = None
-        
-        if shifts:
-            st.dataframe(pd.DataFrame(shifts), use_container_width=True)
+        if worker_name_raw:
+            worker_name = worker_name_raw.strip() # ניקוי רווחים למניעת כפילויות
+            df = load_data()
             
-        st.write("---")
-        st.subheader("🤖 עוזר מנהל חכם (AI)")
+            # בדיקה האם העובד כבר במשמרת (יציאה ריקה)
+            active_shift = df[(df["שם עובד"].astype(str).str.strip() == worker_name) & (df["יציאה"].isna())]
+            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            
+            if active_shift.empty:
+                if st.button("🟢 כניסה למשמרת", type="primary"):
+                    new_row = pd.DataFrame([{"שם עובד": worker_name, "כניסה": now, "יציאה": None, "סהכ שעות": None}])
+                    df = pd.concat([df, new_row], ignore_index=True)
+                    save_data(df)
+                    st.success(f"משמרת החלה ב-{now}")
+                    st.rerun()
+            else:
+                st.warning(f"הנך במשמרת מאז {active_shift.iloc[0]['כניסה']}. לא ניתן להיכנס שוב.")
+                if st.button("🔴 יציאה ממשמרת"):
+                    idx = active_shift.index[-1]
+                    df.at[idx, "יציאה"] = now
+                    t1 = datetime.strptime(df.at[idx, "כניסה"], "%Y-%m-%d %H:%M")
+                    t2 = datetime.strptime(now, "%Y-%m-%d %H:%M")
+                    hours = round((t2 - t1).total_seconds() / 3600, 2)
+                    df.at[idx, "סהכ שעות"] = hours
+                    save_data(df)
+                    st.balloons()
+                    st.success(f"משמרת הסתיימה. סה\"כ: {hours} שעות")
+                    st.rerun()
+
+elif menu == "📊 פאנל ניהול ו-BI":
+    pwd = st.sidebar.text_input("סיסמה:", type="password")
+    if pwd == "1234":
+        df = load_data()
         
-        if API_KEY == "YOUR_API_KEY_HERE":
-            st.warning("ה-AI לא פעיל. יש להזין מפתח API כדי להשתמש בצ'אט.")
+        if not df.empty:
+            df['תאריך'] = pd.to_datetime(df['כניסה'], errors='coerce').dt.date
+
+        # --- מדדים מהירים ---
+        st.subheader("מדדי פעילות (Real-time)")
+        active_workers_df = df[df["יציאה"].isna()] if not df.empty else pd.DataFrame()
+        active_count = len(active_workers_df)
+        total_hours = df["סהכ שעות"].sum() if not df.empty else 0
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("עובדים כעת", active_count)
+        c2.metric("סה\"כ שעות שנרשמו", f"{total_hours:.1f}")
+        c3.metric("משמרות חריגות (>9ש')", len(df[df["סהכ שעות"] > 9]) if not df.empty else 0)
+
+        # --- הפיצ'ר החדש: כפתורי שחרור מהיר למנהל ---
+        st.markdown("---")
+        st.subheader("⚡ עובדים פעילים (סגירת משמרת בלחיצת כפתור)")
+        if active_count > 0:
+            st.write("לחץ על כפתור ה'הוצאה' ליד שם העובד כדי לסגור לו משמרת עם השעה הנוכחית.")
+            for idx, row in active_workers_df.iterrows():
+                col_name, col_btn = st.columns([3, 1])
+                with col_name:
+                    st.markdown(f"**{row['שם עובד']}** (נכנס ב: {row['כניסה']})")
+                with col_btn:
+                    if st.button(f"🔴 הוצא עכשיו", key=f"btn_{idx}"):
+                        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        df.at[idx, "יציאה"] = now_str
+                        t1 = datetime.strptime(df.at[idx, "כניסה"], "%Y-%m-%d %H:%M")
+                        t2 = datetime.strptime(now_str, "%Y-%m-%d %H:%M")
+                        df.at[idx, "סהכ שעות"] = round((t2 - t1).total_seconds() / 3600, 2)
+                        save_data(df)
+                        st.success(f"המשמרת נסגרה!")
+                        st.rerun()
         else:
-            user_question = st.chat_input("שאל את המערכת על המשמרות...")
-            if user_question:
-                with st.chat_message("user"):
-                    st.write(user_question)
-                
-                with open("attendance.csv", "r", encoding="utf-8") as file:
-                    csv_data = file.read()
-                
-                prompt = f"נתוני נוכחות:\n{csv_data}\nשאלה: {user_question}"
-                
+            st.info("אין עובדים במשמרת כרגע.")
+
+        # --- סידור וסינון לפי ימים ---
+        st.markdown("---")
+        st.subheader("📅 סיכום יומי וגרף עומסים")
+        if not df.empty and not df['תאריך'].dropna().empty:
+            available_days = sorted(df['תאריך'].dropna().unique(), reverse=True)
+            selected_day = st.selectbox("בחר יום לצפייה:", available_days)
+            daily_df = df[df['תאריך'] == selected_day]
+            st.dataframe(daily_df[['שם עובד', 'כניסה', 'יציאה', 'סהכ שעות']], use_container_width=True)
+            
+            st.write("**מגמת עומס שעות שבועית:**")
+            hours_per_day = df.groupby('תאריך')['סהכ שעות'].sum().reset_index()
+            st.line_chart(data=hours_per_day, x='תאריך', y='סהכ שעות')
+
+        # --- עריכה וניהול משאבים (הטבלה נעולה לזמנים!) ---
+        st.markdown("---")
+        st.subheader("📝 מחיקת שורות וייצוא (ללא עריכת זמנים)")
+        st.warning("כדי למנוע טעויות, לא ניתן להקליד שעות ידנית. למחיקת כפילויות: סמן את השורה משמאל ולחץ על פח האשפה (Delete).")
+        
+        edited = st.data_editor(
+            df, 
+            num_rows="dynamic", 
+            use_container_width=True,
+            disabled=["כניסה", "יציאה", "סהכ שעות", "תאריך"] # חוסם לחלוטין הקלדה ידנית של שעות!
+        )
+        if st.button("💾 שמור מחיקות / שינויי שמות"):
+            save_data(edited)
+            st.success("הנתונים נשמרו בהצלחה.")
+            st.rerun()
+            
+        csv_data = edited.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 הורד דוח לרואה חשבון", csv_data, "shifts.csv", "text/csv")
+
+        # --- עוזר AI ---
+        with st.expander("🤖 עוזר ניהול AI"):
+            q = st.text_input("שאל על נתוני העבודה (למשל: מי עבד הכי הרבה השבוע?)")
+            if q and API_KEY:
                 with st.spinner("מנתח..."):
                     try:
-                        response = model.generate_content(prompt)
-                        with st.chat_message("assistant"):
-                            st.write(response.text)
+                        res = model.generate_content(f"נתוני משמרות:\n{edited.to_string()}\nשאלה: {q}")
+                        st.info(res.text)
                     except Exception as e:
-                        st.error(f"שגיאה: {e}")
-    else:
-        st.info("אין נתונים במערכת.")
+                        st.warning("⚠️ עומס זמני על ה-AI. המתן כדקה ונסה שוב.")
+    elif pwd: st.error("סיסמה שגויה")
