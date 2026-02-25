@@ -122,13 +122,22 @@ else:
         st.info(f"מחובר כ: **{st.session_state.user_name}** | לא ניתן לצפות בנתוני עובדים אחרים.")
         
         worker_name = st.session_state.user_name
-        active_shift = df[(df["שם עובד"].astype(str).str.strip() == worker_name) & (df["יציאה"].isna())]
+        
+        # שולפים את כל המשמרות של העובד הספציפי
+        worker_shifts = df[df["שם עובד"].astype(str).str.strip() == worker_name]
+        active_shift = worker_shifts[worker_shifts["יציאה"].isna()]
         
         st.markdown("<br>", unsafe_allow_html=True)
         col_w1, col_w2, col_w3 = st.columns([1, 2, 1])
         with col_w2:
             if active_shift.empty:
-                st.success("אתה מחוץ למשמרת. יום עבודה פורה!")
+                # --- התיקון: מציאת שעת היציאה האחרונה ---
+                if not worker_shifts.empty and pd.notna(worker_shifts.iloc[-1]['יציאה']):
+                    last_exit = worker_shifts.iloc[-1]['יציאה']
+                    st.success(f"אתה מחוץ למשמרת. (יציאה אחרונה נרשמה ב: {last_exit})")
+                else:
+                    st.success("אתה מחוץ למשמרת. יום עבודה פורה!")
+                    
                 if st.button("🟢 כניסה למשמרת עכשיו", type="primary"):
                     new_row = pd.DataFrame([{"שם עובד": worker_name, "כניסה": now_str, "יציאה": None, "סהכ שעות": None}])
                     save_data(pd.concat([df, new_row], ignore_index=True))
