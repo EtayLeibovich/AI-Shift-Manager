@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShiftManager | שעון נוכחות</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700;900&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Heebo', sans-serif; } </style>
+</head>
+<body class="bg-slate-900 flex items-center justify-center min-h-screen" id="main-body">
+
+    <!-- ===== מסך ראשי ===== -->
+    <div id="screen-main" class="text-center">
+        <h1 class="text-5xl font-black text-white mb-3 tracking-tight">
+            ברוך הבא ל-<span class="text-blue-500">ShiftManager</span>
+        </h1>
+        <p class="text-slate-500 mb-10">בחר את הפעולה שלך</p>
+
+        <div class="flex gap-6 justify-center mb-8">
+            <!-- שעון נוכחות -->
+            <button onclick="showScreen('screen-clock')"
+                    class="group bg-slate-800 p-10 rounded-3xl border border-slate-700 hover:border-emerald-500 transition-all w-56">
+                <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">⏰</div>
+                <h3 class="text-white text-xl font-bold">שעון נוכחות</h3>
+                <p class="text-slate-500 text-sm mt-1">כניסה / יציאה</p>
+            </button>
+
+            <!-- הפורטל האישי -->
+            <a href="employee.html"
+               class="group bg-slate-800 p-10 rounded-3xl border border-slate-700 hover:border-blue-500 transition-all w-56 no-underline block">
+                <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">📱</div>
+                <h3 class="text-white text-xl font-bold">הפורטל שלי</h3>
+                <p class="text-slate-500 text-sm mt-1">משמרות, לוח, היעדרות</p>
+            </a>
+
+            <!-- כניסת מנהל -->
+            <button onclick="showScreen('screen-manager-login')"
+                    class="group bg-slate-800 p-10 rounded-3xl border border-slate-700 hover:border-purple-500 transition-all w-56">
+                <div class="text-5xl mb-4 group-hover:scale-110 transition-transform">🔐</div>
+                <h3 class="text-white text-xl font-bold">כניסת מנהל</h3>
+                <p class="text-slate-500 text-sm mt-1">לוח ניהול</p>
+            </button>
+        </div>
+
+        <a href="employee-register.html" class="text-slate-500 text-sm hover:text-white transition-colors">
+            עובד חדש? הצטרף לעסק ←
+        </a>
+    </div>
+
+    <!-- ===== שעון נוכחות ===== -->
+    <div id="screen-clock" style="display:none" class="text-center">
+        <div class="bg-white rounded-3xl shadow-2xl p-10 w-80">
+            <div class="text-4xl mb-2">⏰</div>
+            <h2 class="text-2xl font-black text-slate-800 mb-1">שעון נוכחות</h2>
+            <p id="clock-time" class="text-slate-400 text-sm mb-6"></p>
+
+            <input type="password" id="emp-passcode"
+                   placeholder="הכנס קוד אישי"
+                   class="w-full p-4 bg-slate-100 rounded-xl text-center text-2xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200"
+                   onkeypress="if(event.key==='Enter') handleShift('clock-in')">
+
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <button onclick="handleShift('clock-in')"
+                        class="bg-emerald-500 text-white font-bold py-4 rounded-xl hover:bg-emerald-600 transition-all text-lg">
+                    ✅ כניסה
+                </button>
+                <button onclick="handleShift('clock-out')"
+                        class="bg-rose-500 text-white font-bold py-4 rounded-xl hover:bg-rose-600 transition-all text-lg">
+                    🔴 יציאה
+                </button>
+            </div>
+
+            <p id="clock-error" class="text-rose-500 text-sm font-bold min-h-[20px]"></p>
+            <button onclick="showScreen('screen-main')" class="mt-4 text-slate-400 text-sm hover:text-slate-600">
+                ← חזור
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== מסך אישור לאחר כניסה/יציאה ===== -->
+    <div id="screen-confirm" style="display:none" class="text-center">
+        <div class="bg-white rounded-3xl shadow-2xl p-12 w-96">
+            <div id="confirm-icon" class="text-8xl mb-4">✅</div>
+            <h2 id="confirm-name" class="text-3xl font-black text-slate-800 mb-2">שלום!</h2>
+            <p id="confirm-action" class="text-xl text-slate-600 mb-2">נרשמה כניסה</p>
+            <p id="confirm-time" class="text-slate-400 text-sm mb-8"></p>
+
+            <div id="confirm-bar-bg" class="w-full bg-slate-100 rounded-full h-2 mb-4">
+                <div id="confirm-bar" class="bg-blue-500 h-2 rounded-full transition-all duration-100" style="width:100%"></div>
+            </div>
+            <p class="text-slate-400 text-xs">חוזר אוטומטית בעוד <span id="confirm-counter">4</span> שניות...</p>
+        </div>
+    </div>
+
+    <!-- ===== כניסת מנהל ===== -->
+    <div id="screen-manager-login" style="display:none" class="text-center">
+        <div class="bg-white rounded-3xl shadow-2xl p-10 w-80">
+            <div class="text-4xl mb-3">🔐</div>
+            <h2 class="text-2xl font-black text-slate-800 mb-6">כניסת מנהל</h2>
+            <input type="password" id="manager-passcode"
+                   placeholder="קוד מנהל"
+                   class="w-full p-4 bg-slate-100 rounded-xl text-center text-2xl mb-4 outline-none focus:ring-2 focus:ring-purple-500 border border-slate-200"
+                   onkeypress="if(event.key==='Enter') handleManagerLogin()">
+            <button onclick="handleManagerLogin()"
+                    class="w-full bg-purple-600 text-white font-bold py-4 rounded-xl hover:bg-purple-700 transition-all text-lg mb-3">
+                כניסה
+            </button>
+            <p id="manager-error" class="text-rose-500 text-sm font-bold min-h-[20px]"></p>
+            <button onclick="showScreen('screen-main')" class="mt-2 text-slate-400 text-sm hover:text-slate-600">
+                ← חזור
+            </button>
+        </div>
+    </div>
+
+<script>
+    const API = "https://shiftmanager-backend-n0ix.onrender.com";
+    let confirmTimer = null;
+
+    // הצג שעה שוטפת
+    setInterval(() => {
+        const el = document.getElementById('clock-time');
+        if (el) el.textContent = new Date().toLocaleTimeString('he-IL');
+    }, 1000);
+
+    function showScreen(id) {
+        ['screen-main','screen-clock','screen-confirm','screen-manager-login'].forEach(s => {
+            document.getElementById(s).style.display = 'none';
+        });
+        document.getElementById(id).style.display = 'block';
+
+        // נקה שדות
+        if (id === 'screen-clock') {
+            document.getElementById('emp-passcode').value = '';
+            document.getElementById('clock-error').textContent = '';
+            document.getElementById('emp-passcode').focus();
+        }
+        if (id === 'screen-manager-login') {
+            document.getElementById('manager-passcode').value = '';
+            document.getElementById('manager-error').textContent = '';
+        }
+    }
+
+    async function handleShift(type) {
+        const passcode = document.getElementById('emp-passcode').value.trim();
+        const errEl = document.getElementById('clock-error');
+        if (!passcode) { errEl.textContent = 'הכנס קוד אישי'; return; }
+
+        try {
+            const res = await fetch(`${API}/shifts/${type}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode })
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                // שלוף שם העובד
+                const userRes = await fetch(`${API}/users/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ passcode })
+                });
+                const user = userRes.ok ? await userRes.json() : { full_name: '' };
+                showConfirm(user.full_name, type);
+            } else {
+                errEl.textContent = data.detail || 'שגיאה';
+            }
+        } catch {
+            errEl.textContent = 'שגיאת תקשורת — ודא שהשרת פועל';
+        }
+    }
+
+    function showConfirm(name, type) {
+        const isIn = type === 'clock-in';
+        document.getElementById('confirm-icon').textContent = isIn ? '✅' : '👋';
+        document.getElementById('confirm-name').textContent = `שלום, ${name}!`;
+        document.getElementById('confirm-action').textContent = isIn ? '✅ נרשמה כניסה למשמרת' : '👋 נרשמה יציאה מהמשמרת';
+        document.getElementById('confirm-time').textContent = `בשעה ${new Date().toLocaleTimeString('he-IL')}`;
+        document.getElementById('confirm-bar').style.width = '100%';
+
+        showScreen('screen-confirm');
+
+        let secs = 4;
+        document.getElementById('confirm-counter').textContent = secs;
+        if (confirmTimer) clearInterval(confirmTimer);
+
+        confirmTimer = setInterval(() => {
+            secs--;
+            document.getElementById('confirm-counter').textContent = secs;
+            document.getElementById('confirm-bar').style.width = `${(secs / 4) * 100}%`;
+            if (secs <= 0) {
+                clearInterval(confirmTimer);
+                showScreen('screen-clock');
+            }
+        }, 1000);
+    }
+
+    async function handleManagerLogin() {
+        const passcode = document.getElementById('manager-passcode').value.trim();
+        const errEl = document.getElementById('manager-error');
+        if (!passcode) { errEl.textContent = 'הכנס קוד'; return; }
+        try {
+            const res = await fetch(`${API}/users/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode })
+            });
+            const user = await res.json();
+            if (res.ok && user.role === 'manager') {
+                // שמור בלוקל סטורג' ועבור ל-admin
+                localStorage.setItem('sm_token', '');
+                // קבל JWT
+                const tokenRes = await fetch(`${API}/auth/token`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ passcode })
+                });
+                const tokenData = await tokenRes.json();
+                localStorage.setItem('sm_token', tokenData.access_token);
+                localStorage.setItem('sm_business_id', user.business_id);
+                localStorage.setItem('sm_manager_name', user.full_name);
+                window.location.href = 'admin.html';
+            } else if (res.ok && user.role !== 'manager') {
+                errEl.textContent = 'הקוד הזה הוא של עובד, לא מנהל';
+            } else {
+                errEl.textContent = user.detail || 'קוד שגוי';
+            }
+        } catch {
+            errEl.textContent = 'שגיאת תקשורת';
+        }
+    }
+</script>
+</body>
+</html>

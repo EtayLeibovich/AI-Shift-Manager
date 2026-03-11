@@ -1,0 +1,7 @@
+backend/__pycache__/
+backend/*.db
+backend/.env
+backend/requirements.txt.txt
+*.pyc
+.vs/
+.claude/

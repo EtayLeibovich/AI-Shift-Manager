@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShiftManager | לוח ניהול</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #070b14;
+            --surface: #0d1424;
+            --surface2: #111827;
+            --border: rgba(255,255,255,0.07);
+            --text: #e2e8f0;
+            --muted: #64748b;
+            --blue: #3b82f6;
+            --blue-glow: rgba(59,130,246,0.25);
+            --emerald: #10b981;
+            --emerald-glow: rgba(16,185,129,0.2);
+            --rose: #f43f5e;
+            --purple: #8b5cf6;
+            --orange: #f59e0b;
+        }
+
+        * { box-sizing: border-box; }
+        body { font-family: 'Heebo', sans-serif; background: var(--bg); color: var(--text); }
+
+        /* ===== SIDEBAR ===== */
+        .sidebar {
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+        }
+        .sidebar-brand {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, transparent 100%);
+        }
+        .sidebar-link {
+            display: flex; align-items: center; gap: 10px;
+            padding: 11px 14px; border-radius: 10px;
+            color: var(--muted); cursor: pointer;
+            transition: all 0.18s; font-size: 14px; font-weight: 600;
+            position: relative; overflow: hidden;
+        }
+        .sidebar-link:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+        .sidebar-link.active {
+            background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.1));
+            color: white;
+            border: 1px solid rgba(59,130,246,0.3);
+            box-shadow: 0 0 20px rgba(59,130,246,0.1);
+        }
+        .sidebar-link.active::before {
+            content: '';
+            position: absolute; right: 0; top: 20%; bottom: 20%;
+            width: 3px; background: var(--blue);
+            border-radius: 3px 0 0 3px;
+        }
+
+        /* ===== TAB ===== */
+        .tab-section { display: none; }
+        .tab-section.active { display: block; animation: fadeUp 0.25s ease; }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===== MODAL ===== */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(6px);
+            z-index: 50; align-items: center; justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal-box {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+        }
+
+        /* ===== STAT CARD ===== */
+        .stat-card {
+            background: var(--surface2);
+            border-radius: 16px; padding: 22px;
+            border: 1px solid var(--border);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); }
+        .stat-card.blue  { border-top: 3px solid var(--blue);  box-shadow: 0 4px 20px rgba(59,130,246,0.1); }
+        .stat-card.green { border-top: 3px solid var(--emerald); box-shadow: 0 4px 20px rgba(16,185,129,0.1); }
+        .stat-card.orange{ border-top: 3px solid var(--orange); box-shadow: 0 4px 20px rgba(245,158,11,0.1); }
+        .stat-card.rose  { border-top: 3px solid var(--rose);  box-shadow: 0 4px 20px rgba(244,63,94,0.1); }
+
+        /* ===== CARDS ===== */
+        .glass-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+        }
+
+        /* ===== TABLE ===== */
+        .data-table { width: 100%; text-align: right; border-collapse: collapse; }
+        .data-table thead { background: rgba(255,255,255,0.03); }
+        .data-table thead th { padding: 14px 16px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+        .data-table tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.15s; }
+        .data-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+        .data-table tbody td { padding: 14px 16px; font-size: 14px; }
+
+        /* ===== INPUTS ===== */
+        .input-dark {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 12px; padding: 12px 14px;
+            outline: none; width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-dark::placeholder { color: var(--muted); }
+        .input-dark:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-glow); }
+
+        /* ===== BUTTONS ===== */
+        .btn-primary {
+            background: linear-gradient(135deg, #2563eb, #4f46e5);
+            color: white; border: none; border-radius: 12px;
+            padding: 12px 20px; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; box-shadow: 0 4px 15px rgba(37,99,235,0.3);
+        }
+        .btn-primary:hover { box-shadow: 0 6px 25px rgba(37,99,235,0.5); transform: translateY(-1px); }
+        .btn-emerald {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white; border: none; border-radius: 12px;
+            padding: 12px 20px; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; box-shadow: 0 4px 15px rgba(16,185,129,0.25);
+        }
+        .btn-emerald:hover { box-shadow: 0 6px 25px rgba(16,185,129,0.4); transform: translateY(-1px); }
+        .btn-rose {
+            background: linear-gradient(135deg, #e11d48, #f43f5e);
+            color: white; border: none; border-radius: 12px;
+            padding: 12px 20px; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; box-shadow: 0 4px 15px rgba(244,63,94,0.25);
+        }
+        .btn-rose:hover { box-shadow: 0 6px 25px rgba(244,63,94,0.4); transform: translateY(-1px); }
+        .btn-ghost {
+            background: rgba(255,255,255,0.06); color: var(--text);
+            border: 1px solid var(--border); border-radius: 12px;
+            padding: 12px 20px; font-weight: 600; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+
+        /* ===== BADGE ===== */
+        .badge-blue   { background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+        .badge-green  { background: rgba(16,185,129,0.15); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+        .badge-rose   { background: rgba(244,63,94,0.15);  color: #fda4af; border: 1px solid rgba(244,63,94,0.2);  padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+        .badge-purple { background: rgba(139,92,246,0.15); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.2); padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+        .badge-gray   { background: rgba(255,255,255,0.07); color: var(--muted); border: 1px solid var(--border); padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+
+        /* ===== SCROLLBAR ===== */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+        /* ===== TOPBAR ===== */
+        .topbar {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        /* ===== NOTIFICATION ITEM ===== */
+        .notif-item {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(59,130,246,0.08);
+            border: 1px solid rgba(59,130,246,0.15);
+            border-radius: 12px; padding: 14px 16px;
+        }
+
+        /* ===== ACTIVE WORKER CARD ===== */
+        .worker-card {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            border-radius: 14px; padding: 14px 18px; margin-bottom: 8px;
+            transition: border-color 0.2s;
+        }
+        .worker-card:hover { border-color: rgba(59,130,246,0.3); }
+        .worker-card.clocked-in { border-right: 3px solid var(--emerald); }
+
+        /* ===== SELECT ===== */
+        select.input-dark option { background: #1e293b; color: white; }
+    </style>
+</head>
+<body>
+
+<!-- ==================== LOGIN SCREEN ==================== -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center" style="background: radial-gradient(ellipse at 60% 20%, rgba(59,130,246,0.15) 0%, transparent 60%), radial-gradient(ellipse at 20% 80%, rgba(139,92,246,0.1) 0%, transparent 50%), #070b14;">
+    <div style="background: rgba(13,20,36,0.9); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 48px 40px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,0.5);">
+        <div style="width: 72px; height: 72px; background: linear-gradient(135deg, #2563eb, #7c3aed); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 32px; box-shadow: 0 8px 30px rgba(37,99,235,0.4);">🔐</div>
+        <h1 style="font-size: 28px; font-weight: 900; color: white; margin-bottom: 6px;">Shift<span style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Manager</span></h1>
+        <p style="color: #64748b; margin-bottom: 32px; font-size: 14px;">לוח ניהול · כניסת מנהל</p>
+        <input type="password" id="login-passcode" placeholder="הכנס קוד מנהל"
+               class="input-dark" style="text-align: center; font-size: 20px; letter-spacing: 6px; margin-bottom: 16px;"
+               onkeypress="if(event.key==='Enter') handleLogin()">
+        <button onclick="handleLogin()" class="btn-primary" style="width: 100%; font-size: 16px; padding: 14px;">
+            כניסה
+        </button>
+        <p id="login-error" style="margin-top: 14px; color: #f43f5e; font-weight: 700; font-size: 13px; min-height: 20px;"></p>
+        <a href="index.html" style="margin-top: 20px; display: block; color: #475569; font-size: 13px; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">→ לפורטל עובד</a>
+    </div>
+</div>
+
+<!-- ==================== MAIN APP ==================== -->
+<div id="main-app" class="flex h-screen overflow-hidden" style="display:none">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" style="width: 240px; height: 100vh; display: flex; flex-direction: column; position: fixed; right: 0; top: 0; z-index: 20;">
+        <div class="sidebar-brand">
+            <h2 style="font-size: 22px; font-weight: 900; color: white; margin: 0;">Shift<span style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Manager</span></h2>
+            <p id="sidebar-business" style="color: #475569; font-size: 12px; margin-top: 4px;">טוען...</p>
+        </div>
+        <nav style="flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;">
+            <div class="sidebar-link active" id="nav-dashboard" onclick="switchTab('dashboard')">
+                <span>📊</span><span>דשבורד</span>
+            </div>
+            <div class="sidebar-link" id="nav-employees" onclick="switchTab('employees')">
+                <span>👥</span><span>עובדים</span>
+            </div>
+            <div class="sidebar-link" id="nav-schedule" onclick="switchTab('schedule')">
+                <span>📅</span><span>תזמון משמרות</span>
+            </div>
+            <div class="sidebar-link" id="nav-leave" onclick="switchTab('leave')">
+                <span>🏖️</span><span>בקשות היעדרות</span>
+                <span id="leave-badge" style="margin-right: auto; background: #f43f5e; color: white; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 20px; display: none;">0</span>
+            </div>
+            <div class="sidebar-link" id="nav-manage-shifts" onclick="switchTab('manage-shifts')">
+                <span>🎛️</span><span>ניהול משמרות</span>
+            </div>
+            <div class="sidebar-link" id="nav-shifts" onclick="switchTab('shifts')">
+                <span>🕐</span><span>היסטוריית משמרות</span>
+            </div>
+            <div class="sidebar-link" id="nav-reports" onclick="switchTab('reports')">
+                <span>📈</span><span>דוחות ושכר</span>
+            </div>
+            <div class="sidebar-link" id="nav-approvals" onclick="switchTab('approvals')">
+                <span>🆕</span><span>אישור עובדים</span>
+                <span id="approvals-badge" style="margin-right: auto; background: #3b82f6; color: white; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 20px; display: none;">0</span>
+            </div>
+            <div class="sidebar-link" id="nav-branches" onclick="switchTab('branches')">
+                <span>🏢</span><span>סניפים</span>
+            </div>
+            <div class="sidebar-link" id="nav-ai" onclick="switchTab('ai')">
+                <span>🤖</span><span>עוזר AI</span>
+            </div>
+        </nav>
+        <div style="padding: 14px; border-top: 1px solid rgba(255,255,255,0.07);">
+            <p id="sidebar-manager" style="color: #64748b; font-size: 13px; margin-bottom: 10px;">מנהל</p>
+            <button onclick="handleLogout()" style="width: 100%; background: rgba(244,63,94,0.1); color: #f43f5e; border: 1px solid rgba(244,63,94,0.2); padding: 9px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(244,63,94,0.2)'" onmouseout="this.style.background='rgba(244,63,94,0.1)'">
+                התנתק 🔴
+            </button>
+        </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main style="margin-right: 240px; flex: 1; overflow-y: auto; background: var(--bg);">
+        <!-- TOP BAR -->
+        <header class="topbar" style="padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10;">
+            <h1 id="page-title" style="font-size: 18px; font-weight: 700; color: white;">דשבורד</h1>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <button onclick="loadNotifications()" style="position: relative; padding: 8px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 16px;">
+                    🔔
+                    <span id="notif-badge" style="position: absolute; top: -4px; right: -4px; background: #f43f5e; color: white; font-size: 10px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: none; align-items: center; justify-content: center;">0</span>
+                </button>
+                <button onclick="refreshCurrentTab()" style="background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(59,130,246,0.2)'" onmouseout="this.style.background='rgba(59,130,246,0.1)'">
+                    🔄 רענן
+                </button>
+            </div>
+        </header>
+
+        <div style="padding: 28px 32px;">
+
+            <!-- ========== DASHBOARD ========== -->
+            <section id="tab-dashboard" class="tab-section active">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px;">
+                    <div class="stat-card blue" style="text-align: center;">
+                        <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">עובדים כעת</p>
+                        <p id="stat-active" style="font-size: 42px; font-weight: 900; color: #3b82f6; line-height: 1;">-</p>
+                    </div>
+                    <div class="stat-card green" style="text-align: center;">
+                        <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">שעות החודש</p>
+                        <p id="stat-hours" style="font-size: 42px; font-weight: 900; color: #10b981; line-height: 1;">-</p>
+                    </div>
+                    <div class="stat-card orange" style="text-align: center;">
+                        <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">חריגות שעות</p>
+                        <p id="stat-overtime" style="font-size: 42px; font-weight: 900; color: #f59e0b; line-height: 1;">-</p>
+                    </div>
+                    <div class="stat-card rose" style="text-align: center;">
+                        <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">בקשות ממתינות</p>
+                        <p id="stat-leave" style="font-size: 42px; font-weight: 900; color: #f43f5e; line-height: 1;">-</p>
+                    </div>
+                </div>
+
+                <!-- Notifications -->
+                <div id="notif-list" style="margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px;"></div>
+
+                <!-- Active Workers -->
+                <div class="glass-card" style="padding: 24px;">
+                    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px; color: white;">⚡ עובדים פעילים כעת</h3>
+                    <div id="active-workers-list"><p style="color: #475569; font-size: 14px;">טוען...</p></div>
+                </div>
+            </section>
+
+            <!-- ========== EMPLOYEES ========== -->
+            <section id="tab-employees" class="tab-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 22px; font-weight: 700; color: white;">ניהול עובדים</h2>
+                    <button onclick="openEmployeeModal()" class="btn-primary">+ הוסף עובד</button>
+                </div>
+                <div class="glass-card" style="overflow: hidden;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>שם</th><th>תפקיד</th><th>קוד</th><th>תעריף שעתי</th><th>טלפון</th><th>סטטוס</th><th>פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employees-table"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ========== SCHEDULE ========== -->
+            <section id="tab-schedule" class="tab-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <button onclick="prevWeek()" class="btn-ghost" style="padding: 8px 14px;">→</button>
+                        <h2 id="week-label" style="font-size: 17px; font-weight: 700; color: white;">השבוע</h2>
+                        <button onclick="nextWeek()" class="btn-ghost" style="padding: 8px 14px;">←</button>
+                    </div>
+                    <button onclick="openScheduleModal()" class="btn-primary">+ תזמן משמרת</button>
+                </div>
+                <div id="schedule-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px;"></div>
+            </section>
+
+            <!-- ========== LEAVE REQUESTS ========== -->
+            <section id="tab-leave" class="tab-section">
+                <h2 style="font-size: 22px; font-weight: 700; color: white; margin-bottom: 20px;">בקשות היעדרות</h2>
+                <div style="display: flex; gap: 8px; margin-bottom: 20px;">
+                    <button onclick="loadLeave('all')" id="leave-filter-all" class="btn-primary" style="padding: 8px 18px; font-size: 13px;">הכל</button>
+                    <button onclick="loadLeave('pending')" id="leave-filter-pending" class="btn-ghost" style="padding: 8px 18px; font-size: 13px;">ממתינות</button>
+                    <button onclick="loadLeave('approved')" id="leave-filter-approved" class="btn-ghost" style="padding: 8px 18px; font-size: 13px;">אושרו</button>
+                    <button onclick="loadLeave('rejected')" id="leave-filter-rejected" class="btn-ghost" style="padding: 8px 18px; font-size: 13px;">נדחו</button>
+                </div>
+                <div id="leave-list" style="display: flex; flex-direction: column; gap: 12px;"></div>
+            </section>
+
+            <!-- ========== MANAGE SHIFTS ========== -->
+            <section id="tab-manage-shifts" class="tab-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h2 style="font-size: 22px; font-weight: 700; color: white;">🎛️ ניהול משמרות ידני</h2>
+                    <button onclick="loadManageShifts()" style="background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer;">🔄 רענן</button>
+                </div>
+                <p style="color: #475569; font-size: 13px; margin-bottom: 20px;">פתח או סגור משמרת לכל עובד בכל רגע ובכל תאריך ושעה.</p>
+                <div id="manage-shifts-list" style="display: flex; flex-direction: column; gap: 10px;">
+                    <p style="color: #475569; text-align: center; padding: 32px;">טוען...</p>
+                </div>
+            </section>
+
+            <!-- ========== SHIFT HISTORY ========== -->
+            <section id="tab-shifts" class="tab-section">
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px;">
+                    <h2 style="font-size: 22px; font-weight: 700; color: white;">היסטוריית משמרות</h2>
+                    <div style="margin-right: auto; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <span style="color: #64748b; font-size: 13px; font-weight: 700;">מ:</span>
+                        <input type="date" id="filter-from" class="input-dark" style="width: auto; padding: 7px 12px; font-size: 13px;">
+                        <span style="color: #64748b; font-size: 13px; font-weight: 700;">עד:</span>
+                        <input type="date" id="filter-to" class="input-dark" style="width: auto; padding: 7px 12px; font-size: 13px;">
+                        <select id="filter-worker" class="input-dark" style="width: auto; padding: 7px 12px; font-size: 13px;">
+                            <option value="">כל העובדים</option>
+                        </select>
+                        <button onclick="loadAllShifts(); loadEmployeeSummary()" class="btn-primary" style="padding: 8px 16px; font-size: 13px;">🔍 חפש</button>
+                        <button onclick="clearShiftFilters()" class="btn-ghost" style="padding: 8px 14px; font-size: 13px;">✕ נקה</button>
+                    </div>
+                </div>
+
+                <!-- סיכום שעות לפי עובד -->
+                <div id="shifts-summary" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px;"></div>
+
+                <!-- טבלת משמרות מפורטת -->
+                <div class="glass-card" style="overflow: hidden;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>עובד</th><th>כניסה</th><th>יציאה</th><th>שעות</th><th>עריכה</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shifts-table"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ========== REPORTS ========== -->
+            <section id="tab-reports" class="tab-section">
+                <h2 style="font-size: 22px; font-weight: 700; color: white; margin-bottom: 20px;">דוחות ושכר</h2>
+                <div class="glass-card" style="padding: 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <input type="month" id="report-month" class="input-dark" style="width: auto; font-size: 14px;">
+                    <button onclick="loadReport()" class="btn-primary">צור דוח</button>
+                    <button onclick="exportCSV()" class="btn-emerald">📥 ייצא CSV</button>
+                </div>
+                <div id="report-summary" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px;"></div>
+                <div class="glass-card" style="overflow: hidden;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>עובד</th><th>תפקיד</th><th>משמרות</th><th>שעות</th><th>תעריף (₪/ש)</th><th>שכר משוער (₪)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-table"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- ========== APPROVALS ========== -->
+            <section id="tab-approvals" class="tab-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 22px; font-weight: 700; color: white;">🆕 אישור עובדים חדשים</h2>
+                    <button onclick="loadApprovals()" style="background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer;">🔄 רענן</button>
+                </div>
+
+                <!-- קוד הצטרפות לעסק -->
+                <div class="glass-card" style="padding: 24px; margin-bottom: 24px;">
+                    <h3 style="font-weight: 700; font-size: 16px; margin-bottom: 6px; color: white;">🔑 קוד הצטרפות לעסק</h3>
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 16px;">שתף קוד זה עם עובדים חדשים כדי שיוכלו להירשם:</p>
+                    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                        <div style="background: rgba(59,130,246,0.08); border: 2px dashed rgba(59,130,246,0.3); border-radius: 16px; padding: 20px 36px; text-align: center;">
+                            <p id="join-code-display" style="font-size: 36px; font-weight: 900; color: #3b82f6; letter-spacing: 8px;">------</p>
+                            <p style="color: #475569; font-size: 11px; margin-top: 4px;">קוד הצטרפות</p>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <button onclick="copyJoinCode()" class="btn-primary" style="font-size: 13px; padding: 9px 18px;">📋 העתק קוד</button>
+                            <button onclick="regenerateCode()" class="btn-ghost" style="font-size: 13px; padding: 9px 18px;">🔄 קוד חדש</button>
+                        </div>
+                        <div style="flex: 1; background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.15); border-radius: 14px; padding: 16px;">
+                            <p style="color: #93c5fd; font-weight: 700; font-size: 13px; margin-bottom: 6px;">📱 לינק לרישום:</p>
+                            <p class="break-all" id="register-link" style="font-family: monospace; font-size: 12px; color: #64748b;">employee-register.html</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- בקשות ממתינות -->
+                <h3 style="font-weight: 700; font-size: 16px; margin-bottom: 14px; color: white;">⏳ ממתינים לאישור</h3>
+                <div id="approvals-list" style="display: flex; flex-direction: column; gap: 12px;">
+                    <p style="color: #475569; text-align: center; padding: 24px;">טוען...</p>
+                </div>
+            </section>
+
+            <!-- ========== BRANCHES ========== -->
+            <section id="tab-branches" class="tab-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 22px; font-weight: 700; color: white;">ניהול סניפים</h2>
+                    <button onclick="openBranchModal()" class="btn-primary">+ הוסף סניף</button>
+                </div>
+                <div id="branches-list" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;"></div>
+            </section>
+
+            <!-- ========== AI ========== -->
+            <section id="tab-ai" class="tab-section">
+                <h2 style="font-size: 22px; font-weight: 700; color: white; margin-bottom: 20px;">עוזר AI חכם</h2>
+                <div class="glass-card" style="padding: 36px; max-width: 640px;">
+                    <div style="text-align: center; font-size: 52px; margin-bottom: 20px;">🤖</div>
+                    <input type="text" id="ai-input" placeholder='לדוגמה: "מי עבד הכי הרבה השבוע?"'
+                           class="input-dark" style="margin-bottom: 14px;"
+                           onkeypress="if(event.key==='Enter') askAI()">
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="askAI()" class="btn-primary" style="flex:1; font-size: 15px; padding: 14px;">שלח לניתוח</button>
+                        <button onclick="clearAIChat()" style="padding: 14px 18px; background: rgba(255,255,255,0.07); border: 1px solid var(--border); border-radius: 10px; color: #94a3b8; cursor:pointer;">נקה</button>
+                    </div>
+                    <div id="ai-response" style="margin-top: 20px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); padding: 20px; border-radius: 14px; color: #94a3b8; min-height: 80px; max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.7;">
+                        התשובה תופיע כאן...
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+</div>
+
+<!-- ==================== MODALS ==================== -->
+
+<!-- Employee Modal -->
+<div id="employee-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('employee-modal')">
+    <div class="modal-box" style="padding: 32px; width: 100%; max-width: 500px; margin: 16px;">
+        <h3 id="employee-modal-title" style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 20px;">הוסף עובד</h3>
+        <input type="hidden" id="emp-id">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+            <div style="grid-column: 1 / -1;">
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">שם מלא *</label>
+                <input type="text" id="emp-name" class="input-dark">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">תפקיד</label>
+                <select id="emp-role" class="input-dark">
+                    <option value="worker">עובד</option>
+                    <option value="manager">מנהל</option>
+                </select>
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">קוד אישי *</label>
+                <input type="text" id="emp-passcode" class="input-dark">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">תעריף שעתי (₪)</label>
+                <input type="number" id="emp-rate" step="0.5" min="0" class="input-dark">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">טלפון</label>
+                <input type="text" id="emp-phone" class="input-dark">
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">אימייל</label>
+                <input type="email" id="emp-email" class="input-dark">
+            </div>
+        </div>
+        <p id="emp-error" style="color: #f43f5e; font-size: 13px; font-weight: 700; margin-top: 12px; min-height: 20px;"></p>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="saveEmployee()" class="btn-primary" style="flex: 1;">שמור</button>
+            <button onclick="closeModal('employee-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<!-- Schedule Modal -->
+<div id="schedule-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('schedule-modal')">
+    <div class="modal-box" style="padding: 32px; width: 100%; max-width: 420px; margin: 16px;">
+        <h3 style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 20px;">תזמן משמרת</h3>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">עובד *</label>
+                <select id="sched-worker" class="input-dark"></select>
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">שעת התחלה *</label>
+                <input type="datetime-local" id="sched-start" class="input-dark">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">שעת סיום *</label>
+                <input type="datetime-local" id="sched-end" class="input-dark">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">הערות</label>
+                <input type="text" id="sched-notes" class="input-dark">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="saveScheduledShift()" class="btn-primary" style="flex: 1;">שמור</button>
+            <button onclick="closeModal('schedule-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<!-- Branch Modal -->
+<div id="branch-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('branch-modal')">
+    <div class="modal-box" style="padding: 32px; width: 100%; max-width: 380px; margin: 16px;">
+        <h3 id="branch-modal-title" style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 20px;">הוסף סניף</h3>
+        <input type="hidden" id="branch-id">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">שם הסניף *</label>
+                <input type="text" id="branch-name" class="input-dark">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">כתובת</label>
+                <input type="text" id="branch-address" class="input-dark">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="saveBranch()" class="btn-primary" style="flex: 1;">שמור</button>
+            <button onclick="closeModal('branch-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<!-- Manual Open Shift Modal -->
+<div id="manual-open-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('manual-open-modal')">
+    <div class="modal-box" style="padding: 32px; width: 100%; max-width: 380px; margin: 16px;">
+        <h3 style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 4px;">📂 פתיחת משמרת ידנית</h3>
+        <p id="manual-open-name" style="color: #64748b; font-size: 13px; margin-bottom: 20px;"></p>
+        <input type="hidden" id="manual-open-user-id">
+        <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">שעת כניסה</label>
+            <input type="datetime-local" id="manual-open-time" class="input-dark">
+        </div>
+        <p id="manual-open-error" style="color: #f43f5e; font-size: 13px; font-weight: 700; margin-bottom: 12px; min-height: 20px;"></p>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="confirmManualOpen()" class="btn-emerald" style="flex: 1;">✅ פתח משמרת</button>
+            <button onclick="closeModal('manual-open-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<!-- Manual Close Shift Modal -->
+<div id="manual-close-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('manual-close-modal')">
+    <div class="modal-box" style="padding: 32px; width: 100%; max-width: 380px; margin: 16px;">
+        <h3 style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 4px;">🔴 סגירת משמרת ידנית</h3>
+        <p id="manual-close-name" style="color: #64748b; font-size: 13px; margin-bottom: 2px;"></p>
+        <p id="manual-close-clockin" style="color: #10b981; font-size: 13px; font-weight: 700; margin-bottom: 20px;"></p>
+        <input type="hidden" id="manual-close-shift-id">
+        <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">שעת יציאה</label>
+            <input type="datetime-local" id="manual-close-time" class="input-dark">
+        </div>
+        <p id="manual-close-error" style="color: #f43f5e; font-size: 13px; font-weight: 700; margin-bottom: 12px; min-height: 20px;"></p>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="confirmManualClose()" class="btn-rose" style="flex: 1;">🔴 סגור משמרת</button>
+            <button onclick="closeModal('manual-close-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Shift Modal -->
+<div id="edit-shift-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('edit-shift-modal')">
+    <div class="modal-box" style="padding: 32px; width: 100%; max-width: 360px; margin: 16px;">
+        <h3 style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 20px;">עריכת משמרת</h3>
+        <input type="hidden" id="edit-shift-id">
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">כניסה</label>
+                <input type="datetime-local" id="edit-clock-in" class="input-dark">
+            </div>
+            <div>
+                <label style="display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">יציאה</label>
+                <input type="datetime-local" id="edit-clock-out" class="input-dark">
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button onclick="saveShiftEdit()" class="btn-primary" style="flex: 1;">שמור</button>
+            <button onclick="closeModal('edit-shift-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<!-- Leave Note Modal -->
+<div id="leave-note-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('leave-note-modal')">
+    <div class="modal-box" style="padding: 32px; width: 100%; max-width: 360px; margin: 16px;">
+        <h3 id="leave-note-title" style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 16px;">הערת מנהל</h3>
+        <input type="hidden" id="leave-note-id">
+        <input type="hidden" id="leave-note-action">
+        <textarea id="leave-note-text" rows="3" placeholder="הערה (אופציונלי)"
+                  class="input-dark" style="margin-bottom: 16px; resize: vertical;"></textarea>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="confirmLeaveAction()" class="btn-primary" style="flex: 1;">אשר</button>
+            <button onclick="closeModal('leave-note-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = "https://shiftmanager-backend-n0ix.onrender.com";
+    let token = localStorage.getItem('sm_token');
+    let businessId = localStorage.getItem('sm_business_id');
+    let managerName = localStorage.getItem('sm_manager_name') || '';
+    let currentTab = 'dashboard';
+    let employees = [];
+    let scheduleWeekStart = getMonday(new Date());
+    let notifInterval = null;
+
+    // ==================== INIT ====================
+    window.addEventListener('DOMContentLoaded', () => {
+        const now = new Date();
+        document.getElementById('report-month').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+        if (token && businessId) {
+            showApp();
+        }
+    });
+
+    function apiFetch(path, options = {}) {
+        return fetch(`${API}${path}`, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                ...(options.headers || {})
+            }
+        });
+    }
+
+    // ==================== AUTH ====================
+    async function handleLogin() {
+        const passcode = document.getElementById('login-passcode').value.trim();
+        const err = document.getElementById('login-error');
+        if (!passcode) { err.textContent = 'הכנס קוד'; return; }
+        try {
+            const res = await fetch(`${API}/auth/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode })
+            });
+            const data = await res.json();
+            if (!res.ok) { err.textContent = data.detail || 'קוד שגוי'; return; }
+            if (data.user.role !== 'manager') { err.textContent = 'גישת מנהל בלבד'; return; }
+            token = data.access_token;
+            businessId = data.user.business_id;
+            managerName = data.user.full_name;
+            localStorage.setItem('sm_token', token);
+            localStorage.setItem('sm_business_id', businessId);
+            localStorage.setItem('sm_manager_name', managerName);
+            showApp();
+        } catch (e) { err.textContent = 'שגיאת תקשורת'; }
+    }
+
+    function handleLogout() {
+        token = null; businessId = null; managerName = '';
+        localStorage.removeItem('sm_token');
+        localStorage.removeItem('sm_business_id');
+        localStorage.removeItem('sm_manager_name');
+        if (notifInterval) clearInterval(notifInterval);
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('main-app').style.display = 'none';
+        document.getElementById('login-passcode').value = '';
+        document.getElementById('login-error').textContent = '';
+    }
+
+    function showApp() {
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('main-app').style.removeProperty('display');
+        document.getElementById('main-app').style.display = 'flex';
+        document.getElementById('sidebar-manager').textContent = `👤 ${managerName}`;
+        // set business name in sidebar
+        apiFetch(`/businesses/${businessId}/join-code`).then(r => r.json()).then(d => {
+            const el = document.getElementById('sidebar-business');
+            if (el && d.business_name) el.textContent = d.business_name;
+        }).catch(() => {});
+        loadEmployees();
+        loadDashboard();
+        notifInterval = setInterval(loadNotifications, 30000);
+    }
+
+    // ==================== NAVIGATION ====================
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+        document.getElementById(`tab-${tab}`).classList.add('active');
+        document.getElementById(`nav-${tab}`).classList.add('active');
+        currentTab = tab;
+        const titles = {
+            dashboard: 'דשבורד', employees: 'ניהול עובדים', schedule: 'תזמון משמרות',
+            leave: 'בקשות היעדרות', shifts: 'היסטוריית משמרות', reports: 'דוחות ושכר',
+            branches: 'ניהול סניפים', ai: 'עוזר AI', approvals: 'אישור עובדים חדשים',
+            'manage-shifts': 'ניהול משמרות ידני'
+        };
+        document.getElementById('page-title').textContent = titles[tab] || tab;
+        refreshCurrentTab();
+    }
+
+    function refreshCurrentTab() {
+        if (currentTab === 'dashboard') loadDashboard();
+        else if (currentTab === 'employees') loadEmployees();
+        else if (currentTab === 'schedule') loadSchedule();
+        else if (currentTab === 'leave') loadLeave();
+        else if (currentTab === 'shifts') { loadAllShifts(); loadEmployeeSummary(); populateWorkerFilter(); }
+        else if (currentTab === 'reports') {}
+        else if (currentTab === 'branches') loadBranches();
+        else if (currentTab === 'approvals') { loadApprovals(); loadJoinCode(); }
+        else if (currentTab === 'manage-shifts') loadManageShifts();
+    }
+
+    function openModal(id) { document.getElementById(id).classList.add('open'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+    // ==================== DASHBOARD ====================
+    async function loadDashboard() {
+        try {
+            const [statsRes, workersRes, notifsRes] = await Promise.all([
+                apiFetch(`/dashboard/stats/${businessId}`),
+                apiFetch(`/dashboard/active-workers/${businessId}`),
+                apiFetch(`/notifications/${businessId}`)
+            ]);
+            const stats = await statsRes.json();
+            const workers = await workersRes.json();
+            const notifs = await notifsRes.json();
+
+            document.getElementById('stat-active').textContent = stats.active_count ?? '-';
+            document.getElementById('stat-hours').textContent = stats.total_hours ?? '-';
+            document.getElementById('stat-overtime').textContent = stats.overtime_count ?? '-';
+            document.getElementById('stat-leave').textContent = stats.pending_leave ?? '-';
+
+            // Update leave badge in sidebar
+            const badge = document.getElementById('leave-badge');
+            if (stats.pending_leave > 0) { badge.textContent = stats.pending_leave; badge.style.display = 'inline-flex'; }
+            else badge.style.display = 'none';
+
+            // Notifications
+            renderNotifications(notifs);
+
+            // Active workers
+            const container = document.getElementById('active-workers-list');
+            if (!workers.length) { container.innerHTML = '<p style="color: #475569; font-size: 14px;">אין עובדים פעילים כרגע.</p>'; }
+            else {
+                container.innerHTML = workers.map(w => `
+                    <div class="worker-card clocked-in">
+                        <div>
+                            <span style="font-weight: 700; color: white;">${w.full_name}</span>
+                            <span style="font-size: 13px; color: #64748b; margin-right: 10px;">נכנס ${formatTime(w.clock_in)} · <span style="color: #10b981; font-weight: 700;">${w.hours_so_far} שעות</span></span>
+                            ${w.hours_so_far > 8 ? '<span style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-right: 6px;">⚠️ חריגה</span>' : ''}
+                        </div>
+                        <button onclick="forceOut(${w.shift_id})" style="background: rgba(244,63,94,0.1); color: #f43f5e; border: 1px solid rgba(244,63,94,0.2); padding: 7px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer;">🔴 הוצא</button>
+                    </div>
+                `).join('');
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    function renderNotifications(notifs) {
+        const container = document.getElementById('notif-list');
+        const badge = document.getElementById('notif-badge');
+        if (!notifs.length) { container.innerHTML = ''; badge.style.display = 'none'; return; }
+        badge.textContent = notifs.length; badge.style.display = 'flex';
+        container.innerHTML = notifs.slice(0, 5).map(n => `
+            <div class="notif-item">
+                <span style="font-size: 14px; color: #93c5fd; font-weight: 500;">${n.message}</span>
+                <button onclick="dismissNotif(${n.id})" style="color: #3b82f6; margin-right: 12px; font-size: 20px; line-height: 1; background: none; border: none; cursor: pointer; padding: 0 4px;" onmouseover="this.style.color='#93c5fd'" onmouseout="this.style.color='#3b82f6'">×</button>
+            </div>
+        `).join('');
+    }
+
+    async function loadNotifications() {
+        try {
+            const res = await apiFetch(`/notifications/${businessId}`);
+            if (res.ok) { const data = await res.json(); renderNotifications(data); }
+        } catch {}
+    }
+
+    async function dismissNotif(id) {
+        await apiFetch(`/notifications/mark-read/${id}`, { method: 'POST' });
+        loadNotifications();
+        if (currentTab === 'dashboard') loadDashboard();
+    }
+
+    async function forceOut(shiftId) {
+        await apiFetch(`/shifts/force-out/${shiftId}`, { method: 'POST' });
+        loadDashboard();
+    }
+
+    // ==================== EMPLOYEES ====================
+    async function loadEmployees() {
+        try {
+            const res = await apiFetch(`/employees/${businessId}`);
+            employees = await res.json();
+            const tbody = document.getElementById('employees-table');
+            if (!tbody) return;
+            tbody.innerHTML = employees.map(e => `
+                <tr>
+                    <td style="font-weight: 600; color: white;">${e.full_name}</td>
+                    <td><span class="${e.role === 'manager' ? 'badge-blue' : 'badge-gray'}">${e.role === 'manager' ? 'מנהל' : 'עובד'}</span></td>
+                    <td style="font-family: monospace; color: #64748b;">${e.passcode}</td>
+                    <td style="font-weight: 700; color: #10b981;">₪${e.hourly_rate || 0}</td>
+                    <td style="color: #64748b;">${e.phone || '-'}</td>
+                    <td><span class="${e.is_active ? 'badge-green' : 'badge-rose'}">${e.is_active ? 'פעיל' : 'לא פעיל'}</span></td>
+                    <td>
+                        <button onclick="openEmployeeModal(${e.id})" style="color: #3b82f6; font-weight: 700; font-size: 13px; background: none; border: none; cursor: pointer; margin-left: 12px;">עריכה</button>
+                        ${e.is_active ? `<button onclick="deactivateEmployee(${e.id})" style="color: #f43f5e; font-weight: 700; font-size: 13px; background: none; border: none; cursor: pointer;">השבת</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+            // Also populate worker filter in shifts tab
+            const sel = document.getElementById('filter-worker');
+            if (sel) {
+                sel.innerHTML = '<option value="">כל העובדים</option>' + employees.map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
+            }
+            // And schedule worker select
+            const sworker = document.getElementById('sched-worker');
+            if (sworker) {
+                sworker.innerHTML = employees.filter(e => e.is_active).map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    function openEmployeeModal(id = null) {
+        document.getElementById('emp-id').value = id || '';
+        document.getElementById('emp-name').value = '';
+        document.getElementById('emp-role').value = 'worker';
+        document.getElementById('emp-passcode').value = '';
+        document.getElementById('emp-rate').value = '';
+        document.getElementById('emp-phone').value = '';
+        document.getElementById('emp-email').value = '';
+        document.getElementById('emp-error').textContent = '';
+        document.getElementById('employee-modal-title').textContent = id ? 'עריכת עובד' : 'הוסף עובד';
+        if (id) {
+            const emp = employees.find(e => e.id === id);
+            if (emp) {
+                document.getElementById('emp-name').value = emp.full_name;
+                document.getElementById('emp-role').value = emp.role;
+                document.getElementById('emp-passcode').value = emp.passcode;
+                document.getElementById('emp-rate').value = emp.hourly_rate || '';
+                document.getElementById('emp-phone').value = emp.phone || '';
+                document.getElementById('emp-email').value = emp.email || '';
+            }
+        }
+        openModal('employee-modal');
+    }
+
+    async function saveEmployee() {
+        const id = document.getElementById('emp-id').value;
+        const name = document.getElementById('emp-name').value.trim();
+        const passcode = document.getElementById('emp-passcode').value.trim();
+        const err = document.getElementById('emp-error');
+        if (!name) { err.textContent = 'שם חובה'; return; }
+        if (!id && !passcode) { err.textContent = 'קוד אישי חובה'; return; }
+        const body = {
+            full_name: name,
+            role: document.getElementById('emp-role').value,
+            passcode: passcode || undefined,
+            hourly_rate: parseFloat(document.getElementById('emp-rate').value) || 0,
+            phone: document.getElementById('emp-phone').value || null,
+            email: document.getElementById('emp-email').value || null,
+        };
+        try {
+            let res;
+            if (id) {
+                res = await apiFetch(`/employees/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+            } else {
+                res = await apiFetch('/employees/', { method: 'POST', body: JSON.stringify({ ...body, business_id: parseInt(businessId) }) });
+            }
+            if (!res.ok) { const d = await res.json(); err.textContent = d.detail || 'שגיאה'; return; }
+            closeModal('employee-modal');
+            loadEmployees();
+        } catch (e) { err.textContent = 'שגיאת תקשורת'; }
+    }
+
+    async function deactivateEmployee(id) {
+        if (!confirm('להשבית עובד זה?')) return;
+        await apiFetch(`/employees/${id}`, { method: 'DELETE' });
+        loadEmployees();
+    }
+
+    // ==================== SCHEDULE ====================
+    function getMonday(d) {
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        return new Date(d.setDate(diff));
+    }
+
+    function formatDateISO(d) {
+        return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    function prevWeek() { scheduleWeekStart = new Date(scheduleWeekStart.getTime() - 7 * 86400000); loadSchedule(); }
+    function nextWeek() { scheduleWeekStart = new Date(scheduleWeekStart.getTime() + 7 * 86400000); loadSchedule(); }
+
+    async function loadSchedule() {
+        const from = new Date(scheduleWeekStart);
+        const to = new Date(scheduleWeekStart.getTime() + 7 * 86400000 - 1);
+        document.getElementById('week-label').textContent = `${formatDateISO(from)} — ${formatDateISO(to)}`;
+
+        try {
+            const res = await apiFetch(`/schedule/${businessId}?from_date=${from.toISOString()}&to_date=${to.toISOString()}`);
+            const shifts = await res.json();
+            const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+            const grid = document.getElementById('schedule-grid');
+            const dayMap = {};
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(scheduleWeekStart.getTime() + i * 86400000);
+                dayMap[formatDateISO(d)] = { label: `${days[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}`, shifts: [] };
+            }
+            shifts.forEach(s => {
+                const day = formatDateISO(new Date(s.start_time));
+                if (dayMap[day]) dayMap[day].shifts.push(s);
+            });
+            grid.innerHTML = Object.entries(dayMap).map(([date, info]) => `
+                <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 12px; min-height: 150px;">
+                    <p style="font-weight: 700; font-size: 12px; color: #64748b; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 8px;">${info.label}</p>
+                    ${info.shifts.map(s => `
+                        <div style="background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 8px; margin-bottom: 6px; font-size: 12px;">
+                            <p style="font-weight: 700; color: #93c5fd;">${s.full_name}</p>
+                            <p style="color: #3b82f6;">${formatTime(s.start_time)} - ${formatTime(s.end_time)}</p>
+                            ${s.notes ? `<p style="color: #64748b;">${s.notes}</p>` : ''}
+                            <button onclick="deleteScheduledShift(${s.id})" style="color: #f43f5e; font-size: 11px; background: none; border: none; cursor: pointer; margin-top: 4px; font-weight: 700;">× מחק</button>
+                        </div>
+                    `).join('')}
+                </div>
+            `).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    function openScheduleModal() {
+        // Populate worker select
+        const sel = document.getElementById('sched-worker');
+        sel.innerHTML = employees.filter(e => e.is_active !== false).map(e => `<option value="${e.id}">${e.full_name}</option>`).join('');
+        openModal('schedule-modal');
+    }
+
+    async function saveScheduledShift() {
+        const body = {
+            user_id: parseInt(document.getElementById('sched-worker').value),
+            business_id: parseInt(businessId),
+            start_time: document.getElementById('sched-start').value,
+            end_time: document.getElementById('sched-end').value,
+            notes: document.getElementById('sched-notes').value,
+        };
+        if (!body.start_time || !body.end_time) { alert('בחר שעות'); return; }
+        try {
+            const res = await apiFetch('/schedule/', { method: 'POST', body: JSON.stringify(body) });
+            if (res.ok) { closeModal('schedule-modal'); loadSchedule(); }
+        } catch (e) {}
+    }
+
+    async function deleteScheduledShift(id) {
+        if (!confirm('למחוק משמרת מתוזמנת זו?')) return;
+        await apiFetch(`/schedule/${id}`, { method: 'DELETE' });
+        loadSchedule();
+    }
+
+    // ==================== LEAVE ====================
+    let currentLeaveFilter = 'all';
+
+    async function loadLeave(filter = currentLeaveFilter) {
+        currentLeaveFilter = filter;
+        ['all', 'pending', 'approved', 'rejected'].forEach(f => {
+            const btn = document.getElementById(`leave-filter-${f}`);
+            if (!btn) return;
+            if (f === filter) {
+                btn.className = 'btn-primary';
+                btn.style.cssText = 'padding: 8px 18px; font-size: 13px;';
+            } else {
+                btn.className = 'btn-ghost';
+                btn.style.cssText = 'padding: 8px 18px; font-size: 13px;';
+            }
+        });
+        const url = filter === 'all' ? `/leave/${businessId}` : `/leave/${businessId}?status=${filter}`;
+        try {
+            const res = await apiFetch(url);
+            const requests = await res.json();
+            const container = document.getElementById('leave-list');
+            if (!requests.length) { container.innerHTML = '<p class="text-slate-400 text-center py-8">אין בקשות.</p>'; return; }
+            const typeLabels = { vacation: 'חופשה', sick: 'מחלה', personal: 'אישי', other: 'אחר' };
+            const statusStyles = {
+                pending: 'bg-yellow-100 text-yellow-700',
+                approved: 'bg-emerald-100 text-emerald-700',
+                rejected: 'bg-rose-100 text-rose-600'
+            };
+            const statusLabels = { pending: 'ממתין', approved: 'אושר', rejected: 'נדחה' };
+            const leaveStatusClass = { pending: 'badge-purple', approved: 'badge-green', rejected: 'badge-rose' };
+            container.innerHTML = requests.map(r => `
+                <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                        <div>
+                            <span style="font-weight: 700; font-size: 16px; color: white;">${r.full_name}</span>
+                            <span style="font-size: 13px; color: #64748b; margin-right: 10px;">${typeLabels[r.leave_type] || r.leave_type}</span>
+                        </div>
+                        <span class="${leaveStatusClass[r.status] || 'badge-gray'}">${statusLabels[r.status] || r.status}</span>
+                    </div>
+                    <p style="color: #64748b; font-size: 13px; margin-bottom: 4px;">📅 ${r.start_date} → ${r.end_date}</p>
+                    ${r.reason ? `<p style="color: #475569; font-size: 13px; margin-bottom: 8px;">"${r.reason}"</p>` : ''}
+                    ${r.manager_note ? `<p style="color: #475569; font-size: 12px; font-style: italic; margin-bottom: 8px;">הערת מנהל: ${r.manager_note}</p>` : ''}
+                    ${r.status === 'pending' ? `
+                        <div style="display: flex; gap: 8px; margin-top: 12px;">
+                            <button onclick="promptLeaveAction(${r.id}, 'approved')" class="btn-emerald" style="font-size: 13px; padding: 8px 16px;">✅ אשר</button>
+                            <button onclick="promptLeaveAction(${r.id}, 'rejected')" style="background: rgba(244,63,94,0.1); color: #f43f5e; border: 1px solid rgba(244,63,94,0.2); padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer;">❌ דחה</button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    function promptLeaveAction(id, action) {
+        document.getElementById('leave-note-id').value = id;
+        document.getElementById('leave-note-action').value = action;
+        document.getElementById('leave-note-title').textContent = action === 'approved' ? 'אישור בקשה' : 'דחיית בקשה';
+        document.getElementById('leave-note-text').value = '';
+        openModal('leave-note-modal');
+    }
+
+    async function confirmLeaveAction() {
+        const id = document.getElementById('leave-note-id').value;
+        const status = document.getElementById('leave-note-action').value;
+        const note = document.getElementById('leave-note-text').value;
+        try {
+            await apiFetch(`/leave/${id}/status`, {
+                method: 'PUT',
+                body: JSON.stringify({ status, manager_note: note })
+            });
+            closeModal('leave-note-modal');
+            loadLeave();
+            loadDashboard();
+        } catch (e) {}
+    }
+
+    // ==================== SHIFT HISTORY ====================
+    function getShiftFilters() {
+        const workerId = document.getElementById('filter-worker')?.value;
+        const fromDate = document.getElementById('filter-from')?.value;
+        const toDate = document.getElementById('filter-to')?.value;
+        const params = [];
+        if (workerId) params.push(`worker_id=${workerId}`);
+        if (fromDate) params.push(`from_date=${fromDate}T00:00:00`);
+        if (toDate) params.push(`to_date=${toDate}T23:59:59`);
+        return params.length ? '?' + params.join('&') : '';
+    }
+
+    function clearShiftFilters() {
+        document.getElementById('filter-from').value = '';
+        document.getElementById('filter-to').value = '';
+        document.getElementById('filter-worker').value = '';
+        loadAllShifts();
+        loadEmployeeSummary();
+    }
+
+    async function loadAllShifts() {
+        try {
+            const res = await apiFetch(`/dashboard/all-shifts/${businessId}${getShiftFilters()}`);
+            const shifts = await res.json();
+            if (!shifts.length) {
+                document.getElementById('shifts-table').innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-400">אין משמרות לתקופה זו.</td></tr>`;
+                return;
+            }
+            document.getElementById('shifts-table').innerHTML = shifts.map(s => `
+                <tr>
+                    <td style="font-weight: 600; color: white;">${s.full_name}</td>
+                    <td style="font-size: 13px; color: #64748b;">${formatDateTime(s.clock_in)}</td>
+                    <td style="font-size: 13px; color: #64748b;">${s.clock_out ? formatDateTime(s.clock_out) : '<span style="color: #10b981; font-weight: 700;">פעיל</span>'}</td>
+                    <td style="font-weight: 700; color: #3b82f6;">${s.total_hours != null ? s.total_hours + ' ש׳' : '-'}</td>
+                    <td><button onclick="openEditShift(${s.shift_id}, '${s.clock_in}', '${s.clock_out || ''}')" style="color: #3b82f6; font-size: 13px; font-weight: 700; background: none; border: none; cursor: pointer;">✏️ עריכה</button></td>
+                </tr>
+            `).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    async function loadEmployeeSummary() {
+        const fromDate = document.getElementById('filter-from')?.value;
+        const toDate = document.getElementById('filter-to')?.value;
+        const params = [];
+        if (fromDate) params.push(`from_date=${fromDate}T00:00:00`);
+        if (toDate) params.push(`to_date=${toDate}T23:59:59`);
+        const qs = params.length ? '?' + params.join('&') : '';
+        try {
+            const res = await apiFetch(`/dashboard/employee-summary/${businessId}${qs}`);
+            const data = await res.json();
+            const container = document.getElementById('shifts-summary');
+            const active = data.filter(e => e.total_shifts > 0);
+            if (!active.length) { container.innerHTML = ''; return; }
+            container.innerHTML = active.map(e => `
+                <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
+                    <p class="font-bold text-slate-700 text-sm mb-1">${e.full_name}</p>
+                    <p class="text-3xl font-black text-blue-600">${e.total_hours}</p>
+                    <p class="text-xs text-slate-400 mt-1">שעות · ${e.total_shifts} משמרות</p>
+                </div>
+            `).join('');
+        } catch (e) {}
+    }
+
+    async function populateWorkerFilter() {
+        if (!employees.length) await loadEmployees();
+    }
+
+    function openEditShift(id, clockIn, clockOut) {
+        document.getElementById('edit-shift-id').value = id;
+        document.getElementById('edit-clock-in').value = clockIn ? clockIn.slice(0, 16) : '';
+        document.getElementById('edit-clock-out').value = clockOut ? clockOut.slice(0, 16) : '';
+        openModal('edit-shift-modal');
+    }
+
+    async function saveShiftEdit() {
+        const id = document.getElementById('edit-shift-id').value;
+        const body = {
+            clock_in: document.getElementById('edit-clock-in').value,
+            clock_out: document.getElementById('edit-clock-out').value,
+        };
+        try {
+            const res = await apiFetch(`/shifts/edit/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+            if (res.ok) { closeModal('edit-shift-modal'); loadAllShifts(); }
+            else { const d = await res.json(); alert(d.detail || 'שגיאה'); }
+        } catch (e) {}
+    }
+
+    // ==================== REPORTS ====================
+    async function loadReport() {
+        const monthVal = document.getElementById('report-month').value;
+        if (!monthVal) { alert('בחר חודש'); return; }
+        const [year, month] = monthVal.split('-');
+        try {
+            const res = await apiFetch(`/reports/monthly/${businessId}?year=${year}&month=${month}`);
+            const data = await res.json();
+            document.getElementById('report-summary').innerHTML = `
+                <div class="stat-card blue" style="text-align: center;">
+                    <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">סה"כ שעות</p>
+                    <p style="font-size: 36px; font-weight: 900; color: #3b82f6;">${data.grand_total_hours}</p>
+                </div>
+                <div class="stat-card green" style="text-align: center;">
+                    <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">שכר כולל משוער</p>
+                    <p style="font-size: 36px; font-weight: 900; color: #10b981;">₪${data.grand_total_salary.toLocaleString()}</p>
+                </div>
+            `;
+            const rows = data.employees.map(e => `
+                <tr>
+                    <td style="font-weight: 600; color: white;">${e.full_name}</td>
+                    <td><span class="${e.role === 'manager' ? 'badge-blue' : 'badge-gray'}">${e.role === 'manager' ? 'מנהל' : 'עובד'}</span></td>
+                    <td style="text-align: center; color: #94a3b8;">${e.total_shifts}</td>
+                    <td style="font-weight: 700; color: #3b82f6;">${e.total_hours}</td>
+                    <td style="color: #64748b;">₪${e.hourly_rate}</td>
+                    <td style="font-weight: 700; color: #10b981;">₪${e.estimated_salary.toLocaleString()}</td>
+                </tr>
+            `).join('');
+            const totalRow = `
+                <tr style="background: rgba(255,255,255,0.04); font-weight: 700; border-top: 2px solid rgba(255,255,255,0.1);">
+                    <td style="padding: 14px 16px;" colspan="3">סה"כ</td>
+                    <td style="padding: 14px 16px; color: #3b82f6;">${data.grand_total_hours}</td>
+                    <td style="padding: 14px 16px;">-</td>
+                    <td style="padding: 14px 16px; color: #10b981;">₪${data.grand_total_salary.toLocaleString()}</td>
+                </tr>
+            `;
+            document.getElementById('report-table').innerHTML = rows + totalRow;
+        } catch (e) { console.error(e); }
+    }
+
+    async function exportCSV() {
+        const monthVal = document.getElementById('report-month').value;
+        if (!monthVal) { alert('בחר חודש'); return; }
+        const [year, month] = monthVal.split('-');
+        window.location.href = `${API}/reports/export/${businessId}?year=${year}&month=${month}`;
+    }
+
+    // ==================== BRANCHES ====================
+    let branches = [];
+
+    async function loadBranches() {
+        try {
+            const res = await apiFetch(`/branches/${businessId}`);
+            branches = await res.json();
+            const container = document.getElementById('branches-list');
+            if (!branches.length) {
+                container.innerHTML = '<p class="text-slate-400 col-span-3">אין סניפים. הוסף סניף ראשון!</p>';
+                return;
+            }
+            container.innerHTML = branches.map(b => `
+                <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 22px; transition: border-color 0.2s;" onmouseover="this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                        <h3 style="font-weight: 700; font-size: 16px; color: white;">🏢 ${b.name}</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button onclick="openBranchModal(${b.id})" style="color: #3b82f6; font-size: 13px; font-weight: 700; background: none; border: none; cursor: pointer;">עריכה</button>
+                            <button onclick="deleteBranch(${b.id})" style="color: #f43f5e; font-size: 13px; font-weight: 700; background: none; border: none; cursor: pointer;">מחק</button>
+                        </div>
+                    </div>
+                    ${b.address ? `<p style="color: #64748b; font-size: 13px;">📍 ${b.address}</p>` : ''}
+                </div>
+            `).join('');
+        } catch (e) {}
+    }
+
+    function openBranchModal(id = null) {
+        document.getElementById('branch-id').value = id || '';
+        document.getElementById('branch-modal-title').textContent = id ? 'עריכת סניף' : 'הוסף סניף';
+        if (id) {
+            const b = branches.find(x => x.id === id);
+            document.getElementById('branch-name').value = b?.name || '';
+            document.getElementById('branch-address').value = b?.address || '';
+        } else {
+            document.getElementById('branch-name').value = '';
+            document.getElementById('branch-address').value = '';
+        }
+        openModal('branch-modal');
+    }
+
+    async function saveBranch() {
+        const id = document.getElementById('branch-id').value;
+        const name = document.getElementById('branch-name').value.trim();
+        if (!name) { alert('שם חובה'); return; }
+        const body = { business_id: parseInt(businessId), name, address: document.getElementById('branch-address').value };
+        try {
+            if (id) {
+                await apiFetch(`/branches/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+            } else {
+                await apiFetch('/branches/', { method: 'POST', body: JSON.stringify(body) });
+            }
+            closeModal('branch-modal');
+            loadBranches();
+        } catch (e) {}
+    }
+
+    async function deleteBranch(id) {
+        if (!confirm('למחוק סניף זה?')) return;
+        await apiFetch(`/branches/${id}`, { method: 'DELETE' });
+        loadBranches();
+    }
+
+   // היסטוריית שיחה עם ה-AI
+    let aiChatHistory = [];
+
+    async function askAI() {
+        const q = document.getElementById('ai-input').value.trim();
+        if (!q) return;
+        const box = document.getElementById('ai-response');
+        const input = document.getElementById('ai-input');
+
+        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+        const bId = storedUser.business_id || 1;
+
+        // הוסף את שאלת המשתמש לתצוגה
+        box.innerHTML += `<div style="text-align:right;margin:8px 0;color:#93c5fd;"><strong>אתה:</strong> ${q}</div>`;
+        box.innerHTML += `<div id="ai-thinking" style="color:#6b7280;">🤖 חושב...</div>`;
+        box.scrollTop = box.scrollHeight;
+        input.value = '';
+
+        // הוסף לhistory
+        aiChatHistory.push({ role: "user", content: q });
+
+        try {
+            const res = await fetch(API + "/ai/manager-ask", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    business_id: parseInt(bId),
+                    query: q,
+                    history: aiChatHistory.slice(0, -1) // שלח היסטוריה ללא ההודעה הנוכחית
+                })
+            });
+
+            const data = await res.json();
+            const answer = data.answer || "לא התקבלה תשובה מהשרת.";
+
+            // עדכן את ה-history עם תשובת המודל
+            aiChatHistory.push({ role: "model", content: answer });
+
+            // הסר "חושב..." והצג תשובה
+            document.getElementById('ai-thinking')?.remove();
+            box.innerHTML += `<div style="margin:8px 0;color:#d1fae5;"><strong>🤖 AI:</strong> ${answer.replace(/\n/g, '<br>')}</div>`;
+            box.scrollTop = box.scrollHeight;
+        } catch (err) {
+            console.error("AI Error:", err);
+            document.getElementById('ai-thinking')?.remove();
+            box.innerHTML += `<div style="color:#f87171;">שגיאה בחיבור לשרת.</div>`;
+        }
+    }
+
+    function clearAIChat() {
+        aiChatHistory = [];
+        document.getElementById('ai-response').innerHTML = '';
+    }
+
+    // ==================== MANAGE SHIFTS ====================
+    function nowLocalISO() {
+        const now = new Date();
+        now.setSeconds(0, 0);
+        return now.toISOString().slice(0, 16);
+    }
+
+    async function loadManageShifts() {
+        try {
+            const res = await apiFetch(`/shifts/status/${businessId}`);
+            const workers = await res.json();
+            const container = document.getElementById('manage-shifts-list');
+            if (!workers.length) { container.innerHTML = '<p class="text-slate-400 text-center py-8">אין עובדים.</p>'; return; }
+
+            container.innerHTML = workers.map(w => `
+                <div style="background: var(--surface2); border: 1px solid ${w.clocked_in ? 'rgba(16,185,129,0.3)' : 'var(--border)'}; ${w.clocked_in ? 'border-right: 3px solid #10b981;' : ''} border-radius: 14px; padding: 18px 22px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <p style="font-weight: 700; font-size: 16px; color: white; margin-bottom: 4px;">
+                            ${w.full_name}
+                            <span class="${w.role === 'manager' ? 'badge-blue' : 'badge-gray'}" style="margin-right: 8px;">${w.role === 'manager' ? 'מנהל' : 'עובד'}</span>
+                        </p>
+                        ${w.clocked_in
+                            ? `<p style="color: #10b981; font-size: 13px; font-weight: 700;">🟢 במשמרת מאז ${formatDateTime(w.clock_in)}</p>`
+                            : `<p style="color: #475569; font-size: 13px;">⚪ לא במשמרת</p>`
+                        }
+                    </div>
+                    <div>
+                        ${!w.clocked_in
+                            ? `<button onclick="openManualOpenModal(${w.user_id}, '${w.full_name}')" class="btn-emerald" style="font-size: 13px; padding: 9px 18px;">📂 פתח משמרת</button>`
+                            : `<button onclick="openManualCloseModal(${w.shift_id}, '${w.full_name}', '${w.clock_in}')" class="btn-rose" style="font-size: 13px; padding: 9px 18px;">🔴 סגור משמרת</button>`
+                        }
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    function openManualOpenModal(userId, name) {
+        document.getElementById('manual-open-user-id').value = userId;
+        document.getElementById('manual-open-name').textContent = `עובד: ${name}`;
+        document.getElementById('manual-open-time').value = nowLocalISO();
+        document.getElementById('manual-open-time').removeAttribute('max');
+        document.getElementById('manual-open-error').textContent = '';
+        openModal('manual-open-modal');
+    }
+
+    async function confirmManualOpen() {
+        const userId = document.getElementById('manual-open-user-id').value;
+        const clockIn = document.getElementById('manual-open-time').value;
+        const errEl = document.getElementById('manual-open-error');
+        if (!clockIn) { errEl.textContent = 'בחר שעת כניסה'; return; }
+        try {
+            const res = await apiFetch('/shifts/manual-open', {
+                method: 'POST',
+                body: JSON.stringify({ user_id: parseInt(userId), clock_in: clockIn })
+            });
+            if (res.ok) {
+                closeModal('manual-open-modal');
+                loadManageShifts();
+                loadDashboard();
+            } else {
+                const d = await res.json();
+                errEl.textContent = d.detail || 'שגיאה';
+            }
+        } catch { errEl.textContent = 'שגיאת תקשורת'; }
+    }
+
+    function openManualCloseModal(shiftId, name, clockIn) {
+        document.getElementById('manual-close-shift-id').value = shiftId;
+        document.getElementById('manual-close-name').textContent = `עובד: ${name}`;
+        document.getElementById('manual-close-clockin').textContent = `נכנס: ${formatDateTime(clockIn)}`;
+        document.getElementById('manual-close-time').value = nowLocalISO();
+        document.getElementById('manual-close-time').removeAttribute('max');
+        document.getElementById('manual-close-error').textContent = '';
+        openModal('manual-close-modal');
+    }
+
+    async function confirmManualClose() {
+        const shiftId = document.getElementById('manual-close-shift-id').value;
+        const clockOut = document.getElementById('manual-close-time').value;
+        const errEl = document.getElementById('manual-close-error');
+        if (!clockOut) { errEl.textContent = 'בחר שעת יציאה'; return; }
+        try {
+            const res = await apiFetch(`/shifts/manual-close/${shiftId}`, {
+                method: 'POST',
+                body: JSON.stringify({ clock_out: clockOut })
+            });
+            if (res.ok) {
+                closeModal('manual-close-modal');
+                loadManageShifts();
+                loadDashboard();
+            } else {
+                const d = await res.json();
+                errEl.textContent = d.detail || 'שגיאה';
+            }
+        } catch { errEl.textContent = 'שגיאת תקשורת'; }
+    }
+
+    // ==================== APPROVALS ====================
+    let joinCode = '';
+
+    async function loadJoinCode() {
+        try {
+            const res = await apiFetch(`/businesses/${businessId}/join-code`);
+            const data = await res.json();
+            joinCode = data.join_code;
+            document.getElementById('join-code-display').textContent = joinCode;
+            document.getElementById('register-link').textContent =
+                `${window.location.origin}/employee-register.html?code=${joinCode}`;
+        } catch {}
+    }
+
+    async function regenerateCode() {
+        if (!confirm('ליצור קוד חדש? הקוד הישן יפסיק לעבוד.')) return;
+        const res = await apiFetch(`/businesses/${businessId}/regenerate-code`, { method: 'POST' });
+        const data = await res.json();
+        joinCode = data.join_code;
+        document.getElementById('join-code-display').textContent = joinCode;
+        alert('קוד חדש נוצר: ' + joinCode);
+    }
+
+    function copyJoinCode() {
+        navigator.clipboard.writeText(joinCode).then(() => alert('הקוד הועתק!'));
+    }
+
+    async function loadApprovals() {
+        try {
+            const res = await apiFetch(`/register/pending/${businessId}`);
+            const users = await res.json();
+            const badge = document.getElementById('approvals-badge');
+            if (users.length > 0) { badge.textContent = users.length; badge.style.display = 'inline-flex'; }
+            else badge.style.display = 'none';
+
+            const container = document.getElementById('approvals-list');
+            if (!users.length) {
+                container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">אין בקשות ממתינות ✅</div>';
+                return;
+            }
+            container.innerHTML = users.map(u => `
+                <div style="background: var(--surface2); border: 1px solid rgba(59,130,246,0.25); border-right: 3px solid #3b82f6; border-radius: 16px; padding: 22px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <p style="font-weight: 700; font-size: 18px; color: white; margin-bottom: 4px;">${u.full_name}</p>
+                        ${u.phone ? `<p style="color: #64748b; font-size: 13px;">📞 ${u.phone}</p>` : ''}
+                        ${u.email ? `<p style="color: #64748b; font-size: 13px;">📧 ${u.email}</p>` : ''}
+                        <p style="color: #475569; font-size: 12px; margin-top: 4px;">קוד אישי: <span style="font-family: monospace;">${u.passcode}</span></p>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="handleApproval(${u.id}, 'approve')" class="btn-emerald" style="padding: 10px 22px;">✅ אשר</button>
+                        <button onclick="handleApproval(${u.id}, 'reject')" style="background: rgba(244,63,94,0.1); color: #f43f5e; border: 1px solid rgba(244,63,94,0.2); padding: 10px 22px; border-radius: 12px; font-weight: 700; cursor: pointer;">❌ דחה</button>
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) { console.error(e); }
+    }
+
+    async function handleApproval(userId, action) {
+        const label = action === 'approve' ? 'לאשר' : 'לדחות';
+        if (!confirm(`${label} עובד זה?`)) return;
+        await apiFetch(`/register/${userId}/${action}`, { method: 'PUT' });
+        loadApprovals();
+        loadEmployees();
+        loadDashboard();
+    }
+
+    // ==================== UTILS ====================
+    function formatTime(dt) {
+        if (!dt) return '-';
+        return new Date(dt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+    }
+    function formatDateTime(dt) {
+        if (!dt) return '-';
+        return new Date(dt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+</script>
+</body>
+</html>
