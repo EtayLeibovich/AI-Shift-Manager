@@ -11,24 +11,98 @@ import models
 import schemas
 import auth
 from database import engine, get_db
-import google.generativeai as genai
+from groq import Groq
+from passlib.context import CryptContext
 import csv
 import io
 import random
 import string
 import os
+import pyotp
 from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAh1xjL9U9lNZNghWdfB0HabMjnBU14_aM")
-genai.configure(api_key=GEMINI_API_KEY)
+# ---------------------------------------------------------------------------
+# SECURITY — bcrypt password hashing context
+# ---------------------------------------------------------------------------
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+_groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 ISRAEL_TZ = ZoneInfo("Asia/Jerusalem")
 
 
 def now_israel():
     return datetime.now(ISRAEL_TZ).replace(tzinfo=None)
+
+
+def to_naive(dt):
+    """Strip timezone info so arithmetic works whether DB returns aware or naive datetimes."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+# ---------------------------------------------------------------------------
+# SECURITY — passcode hashing helpers
+# ---------------------------------------------------------------------------
+def hash_passcode(plain: str) -> str:
+    """Hash a plaintext passcode with bcrypt before storing it in the DB."""
+    return pwd_context.hash(plain)
+
+
+def calc_shift_salary(hours: float, hourly_rate: float) -> float:
+    """
+    Israeli labor law overtime calculation per shift:
+      - Hours 1–8  : 100% (regular)
+      - Hours 8–10 : 125% (rishon / shniyah)
+      - Hours 10+  : 150% (shilishit+)
+    """
+    if (hourly_rate or 0) <= 0 or (hours or 0) <= 0:
+        return 0.0
+    rate = hourly_rate
+    regular      = min(hours, 8.0)          * rate * 1.00
+    overtime_125 = max(0.0, min(hours, 10.0) - 8.0)  * rate * 1.25
+    overtime_150 = max(0.0, hours - 10.0)   * rate * 1.50
+    return round(regular + overtime_125 + overtime_150, 2)
+
+
+def verify_passcode(plain: str, user: models.User, db: Session) -> bool:
+    """
+    Verify a passcode against the stored bcrypt hash.
+    Lazy-migration: if the hash doesn't exist yet (legacy user), accept the
+    plaintext match and immediately upgrade the record to a bcrypt hash.
+    This ensures a smooth rollout without forcing a full DB reset.
+    """
+    if user.passcode_hash:
+        return pwd_context.verify(plain, user.passcode_hash)
+    # Legacy user — no hash stored yet. Accept plaintext and upgrade.
+    if user.passcode == plain:
+        user.passcode_hash = pwd_context.hash(plain)
+        db.commit()
+        return True
+    return False
+
+
+def get_current_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> models.User:
+    """
+    FastAPI dependency: extracts and validates the Bearer JWT from the Authorization header.
+    Explicitly rejects 2FA pending/setup tokens — only full access tokens are accepted here.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="לא מורשה — נדרש טוקן")
+    token = authorization.split(" ", 1)[1]
+    payload = auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="טוקן לא תקף או פג תוקף")
+    if payload.get("scope") in ("2fa_pending", "2fa_setup"):
+        raise HTTPException(status_code=401, detail="נדרש אימות 2FA להשלמת ההתחברות")
+    user = db.query(models.User).filter(models.User.id == payload["user_id"]).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="משתמש לא נמצא")
+    return user
 
 
 def run_migrations():
@@ -38,18 +112,64 @@ def run_migrations():
         "ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''",
         "ALTER TABLE users ADD COLUMN branch_id INTEGER",
         "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN passcode_hash TEXT",
+        "ALTER TABLE users ADD COLUMN approval_status TEXT DEFAULT 'approved'",
+        "ALTER TABLE users ADD COLUMN totp_secret TEXT",
+        "ALTER TABLE users ADD COLUMN is_2fa_enabled INTEGER DEFAULT 0",
     ]
-    with engine.connect() as conn:
-        for m in migrations:
+    for m in migrations:
+        # כל migration רץ בחיבור נפרד — חיוני ב-PostgreSQL שבו שגיאה
+        # סוגרת את כל הטרנזקציה הנוכחית ומונעת הרצת פקודות נוספות
+        with engine.connect() as conn:
             try:
                 conn.execute(text(m))
                 conn.commit()
             except Exception:
-                pass
+                conn.rollback()  # חובה ב-PostgreSQL לנקות את הטרנזקציה השגויה
 
 
 models.Base.metadata.create_all(bind=engine)
 run_migrations()
+
+
+def auto_seed():
+    """יצירת עסק ומנהל ברירת מחדל אוטומטית אם לא קיימים"""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        biz = db.query(models.Business).filter(models.Business.name == "העסק שלי").first()
+        if not biz:
+            biz = models.Business(name="העסק שלי", join_code="ADMIN1")
+            db.add(biz)
+            db.commit()
+            db.refresh(biz)
+        manager = db.query(models.User).filter(
+            models.User.business_id == biz.id,
+            models.User.role == "manager"
+        ).first()
+        if not manager:
+            default_passcode = "1234"
+            manager = models.User(
+                business_id=biz.id,
+                full_name="מנהל ראשי",
+                role="manager",
+                passcode=default_passcode,
+                # SECURITY: store bcrypt hash — never authenticate against plaintext in DB
+                passcode_hash=hash_passcode(default_passcode),
+                is_active=True,
+                approval_status="approved",
+            )
+            db.add(manager)
+            db.commit()
+        elif manager.passcode_hash is None:
+            # Lazy migration: upgrade existing manager to bcrypt hash
+            manager.passcode_hash = hash_passcode(manager.passcode)
+            db.commit()
+    finally:
+        db.close()
+
+
+auto_seed()
 
 app = FastAPI(title="ShiftManager SaaS API")
 
@@ -66,6 +186,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 class ShiftEditRequest(BaseModel):
@@ -111,6 +236,44 @@ def read_root():
     return {"message": "Welcome to ShiftManager API!"}
 
 
+@app.post("/setup/init")
+def setup_init(db: Session = Depends(get_db)):
+    """יצירת עסק ומנהל ראשוני אם לא קיימים"""
+    biz = db.query(models.Business).filter(models.Business.name == "העסק שלי").first()
+    if not biz:
+        biz = models.Business(name="העסק שלי", join_code="ADMIN1")
+        db.add(biz)
+        db.commit()
+        db.refresh(biz)
+
+    manager = db.query(models.User).filter(
+        models.User.business_id == biz.id,
+        models.User.role == "manager"
+    ).first()
+    if not manager:
+        default_passcode = "1234"
+        manager = models.User(
+            business_id=biz.id,
+            full_name="מנהל ראשי",
+            role="manager",
+            passcode=default_passcode,
+            passcode_hash=hash_passcode(default_passcode),
+            is_active=True,
+            approval_status="approved",
+        )
+        db.add(manager)
+        db.commit()
+        db.refresh(manager)
+
+    return {
+        "status": "ok",
+        "business_id": biz.id,
+        "business_name": biz.name,
+        "join_code": biz.join_code,
+        # SECURITY: passcode not returned in API response
+    }
+
+
 # ==========================================
 # AUTH
 # ==========================================
@@ -147,6 +310,7 @@ def register_employee(req: RegisterRequest, db: Session = Depends(get_db)):
         full_name=req.full_name,
         role="worker",
         passcode=req.passcode,
+        passcode_hash=hash_passcode(req.passcode),  # SECURITY: store bcrypt hash
         phone=req.phone,
         email=req.email,
         is_active=False,
@@ -168,7 +332,8 @@ def get_pending_registrations(business_id: int, db: Session = Depends(get_db)):
         models.User.business_id == business_id,
         models.User.approval_status == "pending"
     ).all()
-    return [{"id": u.id, "full_name": u.full_name, "phone": u.phone, "email": u.email, "passcode": u.passcode} for u in users]
+    # SECURITY: passcode_hash is never returned; passcode returned only for manager workflow
+    return [{"id": u.id, "full_name": u.full_name, "phone": u.phone, "email": u.email} for u in users]
 
 
 @app.put("/register/{user_id}/approve")
@@ -198,15 +363,27 @@ def reject_registration(user_id: int, db: Session = Depends(get_db)):
     return {"message": "נדחה"}
 
 
-@app.post("/auth/token", response_model=schemas.TokenResponse)
+@app.post("/auth/token")
 def login_token(action: schemas.ShiftAction, db: Session = Depends(get_db)):
+    # Look up by passcode identifier, then verify via bcrypt hash
     user = db.query(models.User).filter(models.User.passcode == action.passcode).first()
-    if not user:
+    # SECURITY: use constant-time hash verification to prevent timing attacks
+    if not user or not verify_passcode(action.passcode, user, db):
         raise HTTPException(status_code=401, detail="קוד שגוי")
     if user.approval_status == "pending":
         raise HTTPException(status_code=403, detail="החשבון ממתין לאישור המנהל")
     if user.approval_status == "rejected":
         raise HTTPException(status_code=403, detail="הבקשה נדחתה על ידי המנהל")
+
+    # --- 2FA gate ---
+    if user.is_2fa_enabled and user.totp_secret:
+        # Do NOT issue the full JWT yet. Return a short-lived challenge token instead.
+        pending_token = auth.create_pending_token({
+            "user_id": user.id,
+            "scope": "2fa_pending"
+        })
+        return {"requires_2fa": True, "pending_token": pending_token}
+
     token = auth.create_access_token({
         "user_id": user.id,
         "business_id": user.business_id,
@@ -215,10 +392,97 @@ def login_token(action: schemas.ShiftAction, db: Session = Depends(get_db)):
     return {"access_token": token, "token_type": "bearer", "user": user}
 
 
+@app.post("/auth/setup-2fa", response_model=schemas.TwoFactorSetupResponse)
+def setup_2fa(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Generates a new TOTP secret for the authenticated user and returns:
+    - provisioning_uri: encode as QR code in the frontend
+    - secret: base32 string for manual entry into Google Authenticator
+    - setup_token: short-lived JWT to be passed to /auth/verify-2fa to confirm setup
+
+    NOTE: is_2fa_enabled is NOT set to True here. The user must first scan the QR code
+    and verify a valid code via /auth/verify-2fa to activate 2FA. This prevents lockout
+    if the user abandons the setup flow midway.
+    """
+    secret = pyotp.random_base32()
+    provisioning_uri = pyotp.TOTP(secret).provisioning_uri(
+        name=current_user.full_name,
+        issuer_name="ShiftManager"
+    )
+    # Persist the new secret (not yet enabled) so verify-2fa can read it
+    current_user.totp_secret = secret
+    current_user.is_2fa_enabled = False  # only activated after successful verify
+    db.commit()
+
+    setup_token = auth.create_pending_token({
+        "user_id": current_user.id,
+        "scope": "2fa_setup"
+    })
+    return {
+        "provisioning_uri": provisioning_uri,
+        "secret": secret,
+        "setup_token": setup_token
+    }
+
+
+@app.post("/auth/verify-2fa")
+def verify_2fa(body: schemas.TwoFactorVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Dual-purpose endpoint — handles two flows based on the pending token's scope:
+
+    1. scope='2fa_pending'  (login flow):
+       Verifies the TOTP code, then issues the full JWT access token.
+
+    2. scope='2fa_setup'  (setup activation flow):
+       Verifies the TOTP code against the newly generated secret,
+       then sets is_2fa_enabled=True to complete the setup.
+
+    The TOTP window is ±1 step (±30 seconds) to allow for minor clock drift.
+    """
+    payload = auth.verify_token(body.pending_token)
+    if not payload or payload.get("scope") not in ("2fa_pending", "2fa_setup"):
+        raise HTTPException(status_code=401, detail="טוקן לא תקף או פג תוקף")
+
+    user = db.query(models.User).filter(models.User.id == payload["user_id"]).first()
+    if not user or not user.totp_secret:
+        raise HTTPException(status_code=400, detail="2FA לא מוגדר לחשבון זה")
+
+    totp = pyotp.TOTP(user.totp_secret)
+    # valid_window=1 allows ±30 sec clock drift (one time step in each direction)
+    if not totp.verify(body.code, valid_window=1):
+        raise HTTPException(status_code=401, detail="קוד שגוי — נסה שוב")
+
+    scope = payload["scope"]
+
+    if scope == "2fa_setup":
+        # Activation: code is correct, now officially enable 2FA
+        user.is_2fa_enabled = True
+        db.commit()
+        return {"success": True, "message": "אימות דו-שלבי הופעל בהצלחה"}
+
+    # Login flow: issue the full access token
+    token = auth.create_access_token({
+        "user_id": user.id,
+        "business_id": user.business_id,
+        "role": user.role
+    })
+    return {"access_token": token, "token_type": "bearer", "user": {
+        "id": user.id,
+        "business_id": user.business_id,
+        "full_name": user.full_name,
+        "role": user.role,
+        "hourly_rate": user.hourly_rate,
+        "phone": user.phone,
+        "email": user.email,
+        "branch_id": user.branch_id,
+        "is_active": user.is_active,
+    }}
+
+
 @app.post("/users/login", response_model=schemas.UserResponse)
 def login(action: schemas.ShiftAction, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.passcode == action.passcode).first()
-    if not user:
+    if not user or not verify_passcode(action.passcode, user, db):
         raise HTTPException(status_code=401, detail="קוד שגוי")
     if user.approval_status == "pending":
         raise HTTPException(status_code=403, detail="החשבון ממתין לאישור המנהל")
@@ -333,6 +597,7 @@ def create_employee(user: schemas.UserCreate, db: Session = Depends(get_db)):
         full_name=user.full_name,
         role=user.role,
         passcode=user.passcode,
+        passcode_hash=hash_passcode(user.passcode),  # SECURITY: always hash before storing
         hourly_rate=user.hourly_rate,
         phone=user.phone,
         email=user.email,
@@ -355,7 +620,11 @@ def update_employee(employee_id: int, update: schemas.UserUpdate, db: Session = 
     user = db.query(models.User).filter(models.User.id == employee_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
-    for field, value in update.dict(exclude_unset=True).items():
+    data = update.dict(exclude_unset=True)
+    # SECURITY: if a new passcode is being set, also update the bcrypt hash
+    if "passcode" in data and data["passcode"]:
+        data["passcode_hash"] = hash_passcode(data["passcode"])
+    for field, value in data.items():
         setattr(user, field, value)
     db.commit()
     db.refresh(user)
@@ -404,7 +673,7 @@ def clock_out(action: schemas.ShiftAction, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="אין משמרת פתוחה")
     open_shift.clock_out = now_israel()
     open_shift.total_hours = round(
-        (open_shift.clock_out - open_shift.clock_in).total_seconds() / 3600.0, 2
+        (open_shift.clock_out - to_naive(open_shift.clock_in)).total_seconds() / 3600.0, 2
     )
     db.commit()
     db.refresh(open_shift)
@@ -438,16 +707,22 @@ def get_personal_stats(passcode: str, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404)
     now = datetime.now()
-    monthly_hours = (
-        db.query(func.sum(models.Shift.total_hours))
+    # Fetch individual completed shifts to calculate overtime salary per-shift
+    monthly_shifts = (
+        db.query(models.Shift)
         .filter(
             models.Shift.user_id == user.id,
             extract("year", models.Shift.clock_in) == now.year,
             extract("month", models.Shift.clock_in) == now.month,
+            models.Shift.clock_out != None,
         )
-        .scalar()
-        or 0.0
+        .all()
     )
+    monthly_hours = round(sum(s.total_hours for s in monthly_shifts if s.total_hours), 2)
+    estimated_salary = round(sum(
+        calc_shift_salary(s.total_hours, user.hourly_rate or 0.0)
+        for s in monthly_shifts if s.total_hours
+    ), 2)
     upcoming = (
         db.query(models.ScheduledShift)
         .filter(
@@ -476,8 +751,8 @@ def get_personal_stats(passcode: str, db: Session = Depends(get_db)):
             "hourly_rate": user.hourly_rate or 0.0,
             "business_id": user.business_id,
         },
-        "monthly_hours": round(monthly_hours, 2),
-        "estimated_salary": round(monthly_hours * (user.hourly_rate or 0.0), 2),
+        "monthly_hours": monthly_hours,
+        "estimated_salary": estimated_salary,
         "total_shifts": db.query(models.Shift).filter(models.Shift.user_id == user.id).count(),
         "upcoming_shifts": len(upcoming),
         "pending_leave": pending_leave,
@@ -541,7 +816,7 @@ def get_active_workers(business_id: int, db: Session = Depends(get_db)):
             "shift_id": s.Shift.id,
             "full_name": s.User.full_name,
             "clock_in": s.Shift.clock_in,
-            "hours_so_far": round((now - s.Shift.clock_in).total_seconds() / 3600.0, 1),
+            "hours_so_far": round((now - to_naive(s.Shift.clock_in)).total_seconds() / 3600.0, 1),
         }
         for s in open_shifts
     ]
@@ -569,10 +844,10 @@ def manual_close_shift(shift_id: int, req: ManualShiftClose, db: Session = Depen
     if not shift:
         raise HTTPException(status_code=404, detail="משמרת לא נמצאה")
     # מנהל יכול לסגור משמרת בכל זמן — עבר או עתיד
-    if req.clock_out < shift.clock_in:
+    if req.clock_out < to_naive(shift.clock_in):
         raise HTTPException(status_code=400, detail="יציאה לפני כניסה — בדוק תאריכים")
     shift.clock_out = req.clock_out
-    shift.total_hours = round((shift.clock_out - shift.clock_in).total_seconds() / 3600.0, 2)
+    shift.total_hours = round((shift.clock_out - to_naive(shift.clock_in)).total_seconds() / 3600.0, 2)
     db.commit()
     db.refresh(shift)
     return shift
@@ -605,7 +880,7 @@ def force_clock_out(shift_id: int, db: Session = Depends(get_db)):
     if shift and not shift.clock_out:
         shift.clock_out = now_israel()
         shift.total_hours = round(
-            (shift.clock_out - shift.clock_in).total_seconds() / 3600.0, 2
+            (shift.clock_out - to_naive(shift.clock_in)).total_seconds() / 3600.0, 2
         )
         db.commit()
     return {"status": "ok"}
@@ -624,6 +899,16 @@ def edit_shift(shift_id: int, request: ShiftEditRequest, db: Session = Depends(g
     db.commit()
     db.refresh(shift)
     return shift
+
+
+@app.delete("/shifts/{shift_id}")
+def delete_shift(shift_id: int, db: Session = Depends(get_db)):
+    shift = db.query(models.Shift).filter(models.Shift.id == shift_id).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    db.delete(shift)
+    db.commit()
+    return {"ok": True}
 
 
 @app.get("/dashboard/all-shifts/{business_id}")
@@ -913,6 +1198,11 @@ def get_monthly_report(
             .all()
         )
         total_hours = sum(s.total_hours for s in shifts if s.total_hours)
+        # Overtime salary: calculated per-shift so each shift triggers its own overtime tier
+        estimated_salary = sum(
+            calc_shift_salary(s.total_hours, w.hourly_rate or 0.0)
+            for s in shifts if s.total_hours
+        )
         report_rows.append(
             schemas.SalaryReportRow(
                 user_id=w.id,
@@ -921,7 +1211,7 @@ def get_monthly_report(
                 total_shifts=len(shifts),
                 total_hours=round(total_hours, 2),
                 hourly_rate=w.hourly_rate or 0.0,
-                estimated_salary=round(total_hours * (w.hourly_rate or 0.0), 2),
+                estimated_salary=round(estimated_salary, 2),
             )
         )
     return schemas.MonthlyReport(
@@ -961,13 +1251,17 @@ def export_monthly_csv(
             .all()
         )
         total_hours = sum(s.total_hours for s in shifts if s.total_hours)
+        estimated_salary = sum(
+            calc_shift_salary(s.total_hours, w.hourly_rate or 0.0)
+            for s in shifts if s.total_hours
+        )
         writer.writerow([
             w.full_name,
             w.role,
             len(shifts),
             round(total_hours, 2),
             w.hourly_rate or 0.0,
-            round(total_hours * (w.hourly_rate or 0.0), 2),
+            round(estimated_salary, 2),
         ])
 
     output.seek(0)
@@ -1016,21 +1310,25 @@ def manager_ai_ask(payload: dict, db: Session = Depends(get_db)):
         f"**50 המשמרות האחרונות:**\n{shifts_context}"
     )
 
-    # בנה היסטוריית שיחה לפורמט של Gemini
-    chat_history = []
+    # בנה היסטוריית שיחה לפורמט של Groq (OpenAI-compatible)
+    messages = [{"role": "system", "content": system_prompt}]
     for msg in history:
-        if msg.get("role") == "user":
-            chat_history.append({"role": "user", "parts": [msg["content"]]})
-        elif msg.get("role") == "model":
-            chat_history.append({"role": "model", "parts": [msg["content"]]})
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "user":
+            messages.append({"role": "user", "content": content})
+        elif role == "model":
+            messages.append({"role": "assistant", "content": content})
+    messages.append({"role": "user", "content": query})
 
     try:
-        model = genai.GenerativeModel(
-            "gemini-1.5-flash",
-            system_instruction=system_prompt
+        if not _groq_client:
+            return {"answer": "שגיאת AI: GROQ_API_KEY לא מוגדר בסביבה."}
+        response = _groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            max_tokens=1024,
         )
-        chat = model.start_chat(history=chat_history)
-        res = chat.send_message(query)
-        return {"answer": res.text}
+        return {"answer": response.choices[0].message.content}
     except Exception as e:
         return {"answer": f"שגיאת AI: {str(e)}"}

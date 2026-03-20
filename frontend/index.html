@@ -57,6 +57,7 @@
 
             <input type="password" id="emp-passcode"
                    placeholder="הכנס קוד אישי"
+                   autocomplete="off"
                    class="w-full p-4 bg-slate-100 rounded-xl text-center text-2xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 border border-slate-200"
                    onkeypress="if(event.key==='Enter') handleShift('clock-in')">
 
@@ -93,6 +94,31 @@
         </div>
     </div>
 
+    <!-- ===== מודל 2FA ===== -->
+    <div id="modal-2fa" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:50;"
+         class="flex items-center justify-center">
+        <div class="bg-white rounded-3xl shadow-2xl p-10 w-80 text-center">
+            <div class="text-4xl mb-3">🔐</div>
+            <h2 class="text-xl font-black text-slate-800 mb-1">אימות דו-שלבי</h2>
+            <p class="text-slate-500 text-sm mb-6">הזן את הקוד מ-Google Authenticator</p>
+            <input type="text" id="totp-code"
+                   inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                   placeholder="123456"
+                   autocomplete="one-time-code"
+                   class="w-full p-4 bg-slate-100 rounded-xl text-center text-3xl tracking-widest mb-4 outline-none focus:ring-2 focus:ring-purple-500 border border-slate-200"
+                   onkeypress="if(event.key==='Enter') submit2FACode()">
+            <button onclick="submit2FACode()"
+                    id="btn-2fa-submit"
+                    class="w-full bg-purple-600 text-white font-bold py-4 rounded-xl hover:bg-purple-700 transition-all text-lg mb-3">
+                אמת קוד
+            </button>
+            <p id="totp-error" class="text-rose-500 text-sm font-bold min-h-[20px]"></p>
+            <button onclick="close2FAModal()" class="mt-2 text-slate-400 text-sm hover:text-slate-600">
+                ← ביטול
+            </button>
+        </div>
+    </div>
+
     <!-- ===== כניסת מנהל ===== -->
     <div id="screen-manager-login" style="display:none" class="text-center">
         <div class="bg-white rounded-3xl shadow-2xl p-10 w-80">
@@ -100,6 +126,7 @@
             <h2 class="text-2xl font-black text-slate-800 mb-6">כניסת מנהל</h2>
             <input type="password" id="manager-passcode"
                    placeholder="קוד מנהל"
+                   autocomplete="off"
                    class="w-full p-4 bg-slate-100 rounded-xl text-center text-2xl mb-4 outline-none focus:ring-2 focus:ring-purple-500 border border-slate-200"
                    onkeypress="if(event.key==='Enter') handleManagerLogin()">
             <button onclick="handleManagerLogin()"
@@ -116,6 +143,17 @@
 <script>
     const API = "https://shiftmanager-backend-n0ix.onrender.com";
     let confirmTimer = null;
+    let _pendingToken = null;  // holds the short-lived 2FA challenge token during login
+
+    // נקה שדות פסקוד בטעינת הדף — מונע אוטו-פיל של הדפדפן
+    // + warm-up ping: מעיר את שרת Render ברקע כדי לקצר את זמן ההמתנה בכניסה
+    window.addEventListener('load', () => {
+        ['emp-passcode', 'manager-passcode'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        fetch(`${API}/health`).catch(() => {});
+    });
 
     // הצג שעה שוטפת
     setInterval(() => {
@@ -146,16 +184,27 @@
         const errEl = document.getElementById('clock-error');
         if (!passcode) { errEl.textContent = 'הכנס קוד אישי'; return; }
 
+        const btns = document.querySelectorAll('#screen-clock button');
+        btns.forEach(b => b.disabled = true);
+        errEl.textContent = '';
+
+        // אם לוקח יותר מ-3 שניות — הצג הודעת המתנה (cold start)
+        const wakeTimer = setTimeout(() => {
+            errEl.style.color = '#f59e0b';
+            errEl.textContent = '⏳ השרת מתעורר, נא המתן...';
+        }, 3000);
+
         try {
             const res = await fetch(`${API}/shifts/${type}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ passcode })
             });
+            clearTimeout(wakeTimer);
+            errEl.style.color = '';
             const data = await res.json();
 
             if (res.ok) {
-                // שלוף שם העובד
                 const userRes = await fetch(`${API}/users/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -167,7 +216,11 @@
                 errEl.textContent = data.detail || 'שגיאה';
             }
         } catch {
+            clearTimeout(wakeTimer);
+            errEl.style.color = '';
             errEl.textContent = 'שגיאת תקשורת — ודא שהשרת פועל';
+        } finally {
+            btns.forEach(b => b.disabled = false);
         }
     }
 
@@ -200,35 +253,113 @@
         const passcode = document.getElementById('manager-passcode').value.trim();
         const errEl = document.getElementById('manager-error');
         if (!passcode) { errEl.textContent = 'הכנס קוד'; return; }
+
+        const btn = document.querySelector('#screen-manager-login button');
+        btn.disabled = true;
+        btn.textContent = '⏳ מתחבר...';
+        errEl.textContent = '';
+
+        // אם לוקח יותר מ-3 שניות — הצג הודעת המתנה (cold start)
+        const wakeTimer = setTimeout(() => {
+            errEl.style.color = '#f59e0b';
+            errEl.textContent = '⏳ השרת מתעורר, נא המתן עד 60 שניות...';
+        }, 3000);
+
         try {
-            const res = await fetch(`${API}/users/login`, {
+            // Step 1: verify passcode identity
+            const userRes = await fetch(`${API}/users/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ passcode })
             });
-            const user = await res.json();
-            if (res.ok && user.role === 'manager') {
-                // שמור בלוקל סטורג' ועבור ל-admin
-                localStorage.setItem('sm_token', '');
-                // קבל JWT
-                const tokenRes = await fetch(`${API}/auth/token`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ passcode })
-                });
-                const tokenData = await tokenRes.json();
-                localStorage.setItem('sm_token', tokenData.access_token);
-                localStorage.setItem('sm_business_id', user.business_id);
-                localStorage.setItem('sm_manager_name', user.full_name);
-                window.location.href = 'admin.html';
-            } else if (res.ok && user.role !== 'manager') {
-                errEl.textContent = 'הקוד הזה הוא של עובד, לא מנהל';
+            clearTimeout(wakeTimer);
+            errEl.style.color = '';
+            const user = await userRes.json();
+
+            if (!userRes.ok) { errEl.textContent = user.detail || 'קוד שגוי'; return; }
+            if (user.role !== 'manager') { errEl.textContent = 'הקוד הזה הוא של עובד, לא מנהל'; return; }
+
+            // Step 2: get token (may require 2FA)
+            const tokenRes = await fetch(`${API}/auth/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ passcode })
+            });
+            const tokenData = await tokenRes.json();
+
+            if (!tokenRes.ok) { errEl.textContent = tokenData.detail || 'שגיאה'; return; }
+
+            if (tokenData.requires_2fa) {
+                // Server wants 2FA — save the pending token and show the modal
+                _pendingToken = tokenData.pending_token;
+                open2FAModal();
             } else {
-                errEl.textContent = user.detail || 'קוד שגוי';
+                // No 2FA — log in directly
+                finalizeLogin(tokenData, user);
             }
         } catch {
+            clearTimeout(wakeTimer);
+            errEl.style.color = '';
             errEl.textContent = 'שגיאת תקשורת';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'כניסה';
         }
+    }
+
+    function open2FAModal() {
+        document.getElementById('totp-code').value = '';
+        document.getElementById('totp-error').textContent = '';
+        document.getElementById('modal-2fa').style.display = 'flex';
+        setTimeout(() => document.getElementById('totp-code').focus(), 100);
+    }
+
+    function close2FAModal() {
+        _pendingToken = null;
+        document.getElementById('modal-2fa').style.display = 'none';
+    }
+
+    async function submit2FACode() {
+        const code = document.getElementById('totp-code').value.trim();
+        const errEl = document.getElementById('totp-error');
+        if (!code || code.length !== 6) { errEl.textContent = 'הכנס קוד בן 6 ספרות'; return; }
+
+        const btn = document.getElementById('btn-2fa-submit');
+        btn.disabled = true;
+        btn.textContent = '⏳ מאמת...';
+        errEl.textContent = '';
+
+        try {
+            const res = await fetch(`${API}/auth/verify-2fa`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pending_token: _pendingToken, code })
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                errEl.textContent = data.detail || 'קוד שגוי';
+                document.getElementById('totp-code').value = '';
+                document.getElementById('totp-code').focus();
+                return;
+            }
+
+            // Success — close modal and log in
+            close2FAModal();
+            finalizeLogin(data, data.user);
+        } catch {
+            errEl.textContent = 'שגיאת תקשורת';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'אמת קוד';
+        }
+    }
+
+    function finalizeLogin(tokenData, user) {
+        localStorage.setItem('sm_token', tokenData.access_token);
+        localStorage.setItem('sm_business_id', user.business_id);
+        localStorage.setItem('sm_manager_name', user.full_name);
+        window.location.href = 'admin.html';
     }
 </script>
 </body>
