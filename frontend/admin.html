@@ -4,7 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ShiftManager | לוח ניהול</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ShiftManager">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+      }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -191,31 +203,88 @@
 
         /* ===== SELECT ===== */
         select.input-dark option { background: #1e293b; color: white; }
+
+        /* ===== MOBILE RESPONSIVE ===== */
+        #mob-menu-btn { display: none; }
+        #sidebar-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65); z-index: 19;
+            backdrop-filter: blur(2px);
+        }
+        #sidebar-overlay.open { display: block; }
+
+        /* Prevent page-wide horizontal overflow */
+        html, body { max-width: 100%; overflow-x: hidden; }
+
+        /* ===== NOTIFICATION DROPDOWN ===== */
+        #notif-dropdown {
+            display: none;
+            position: absolute;
+            top: calc(100% + 10px);
+            left: 0;
+            width: 340px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+            z-index: 300;
+            overflow: hidden;
+        }
+        #notif-dropdown.open { display: block; }
+        @media (max-width: 768px) {
+            #notif-dropdown { width: calc(100vw - 20px); left: auto; right: 0; }
+        }
+
+        /* Table containers scroll horizontally instead of breaking layout */
+        .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; width: 100%; }
+
+        @media (max-width: 768px) {
+            /* Sidebar hidden off-screen to the right by default */
+            .sidebar {
+                transform: translateX(100%);
+                transition: transform 0.28s cubic-bezier(.4,0,.2,1);
+            }
+            .sidebar.open {
+                transform: translateX(0);
+                box-shadow: -8px 0 40px rgba(0,0,0,0.6);
+            }
+            /* Main takes full width, no horizontal overflow */
+            #main-content {
+                margin-right: 0 !important;
+                max-width: 100vw;
+                overflow-x: hidden;
+            }
+            /* Tighter padding on mobile */
+            #main-content > header {
+                padding: 12px 14px !important;
+            }
+            #main-content > div {
+                padding: 12px !important;
+            }
+            /* Show hamburger */
+            #mob-menu-btn { display: flex; }
+            /* Tables compact + horizontal scroll via .table-wrap */
+            .data-table { font-size: 12px; min-width: 500px; }
+            .data-table thead th, .data-table tbody td { padding: 8px 8px; }
+            /* Stat cards stack nicely */
+            .stat-card { padding: 14px; }
+            /* Modal fits screen */
+            .modal-box { margin: 12px; max-width: calc(100vw - 24px) !important; }
+            /* Glass cards full width */
+            .glass-card { border-radius: 12px; }
+            /* AI section max-width relief */
+            #tab-ai .glass-card { max-width: 100% !important; padding: 20px !important; }
+        }
     </style>
 </head>
 <body>
 
-<!-- ==================== LOGIN SCREEN ==================== -->
-<div id="login-screen" class="min-h-screen flex items-center justify-center" style="background: radial-gradient(ellipse at 60% 20%, rgba(59,130,246,0.15) 0%, transparent 60%), radial-gradient(ellipse at 20% 80%, rgba(139,92,246,0.1) 0%, transparent 50%), #070b14;">
-    <div style="background: rgba(13,20,36,0.9); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 48px 40px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,0.5);">
-        <div style="width: 72px; height: 72px; background: linear-gradient(135deg, #2563eb, #7c3aed); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 32px; box-shadow: 0 8px 30px rgba(37,99,235,0.4);">🔐</div>
-        <h1 style="font-size: 28px; font-weight: 900; color: white; margin-bottom: 6px;">Shift<span style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Manager</span></h1>
-        <p style="color: #64748b; margin-bottom: 32px; font-size: 14px;">לוח ניהול · כניסת מנהל</p>
-        <input type="password" id="login-passcode" placeholder="הכנס קוד מנהל"
-               class="input-dark" style="text-align: center; font-size: 20px; letter-spacing: 6px; margin-bottom: 16px;"
-               onkeypress="if(event.key==='Enter') handleLogin()">
-        <button onclick="handleLogin()" class="btn-primary" style="width: 100%; font-size: 16px; padding: 14px;">
-            כניסה
-        </button>
-        <p id="login-error" style="margin-top: 14px; color: #f43f5e; font-weight: 700; font-size: 13px; min-height: 20px;"></p>
-        <a href="index.html" style="margin-top: 20px; display: block; color: #475569; font-size: 13px; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">→ לפורטל עובד</a>
-    </div>
-</div>
-
 <!-- ==================== MAIN APP ==================== -->
 <div id="main-app" class="flex h-screen overflow-hidden" style="display:none">
+    <!-- MOBILE SIDEBAR OVERLAY -->
+    <div id="sidebar-overlay" onclick="closeSidebar()"></div>
     <!-- SIDEBAR -->
-    <aside class="sidebar" style="width: 240px; height: 100vh; display: flex; flex-direction: column; position: fixed; right: 0; top: 0; z-index: 20;">
+    <aside id="sidebar" class="sidebar" style="width: 240px; height: 100vh; display: flex; flex-direction: column; position: fixed; right: 0; top: 0; z-index: 20;">
         <div class="sidebar-brand">
             <h2 style="font-size: 22px; font-weight: 900; color: white; margin: 0;">Shift<span style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Manager</span></h2>
             <p id="sidebar-business" style="color: #475569; font-size: 12px; margin-top: 4px;">טוען...</p>
@@ -256,22 +325,89 @@
         </nav>
         <div style="padding: 14px; border-top: 1px solid rgba(255,255,255,0.07);">
             <p id="sidebar-manager" style="color: #64748b; font-size: 13px; margin-bottom: 10px;">מנהל</p>
+            <button onclick="open2FASetupModal()" id="btn-2fa-sidebar" style="width: 100%; background: rgba(139,92,246,0.1); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.2); padding: 9px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-bottom: 8px;" onmouseover="this.style.background='rgba(139,92,246,0.2)'" onmouseout="this.style.background='rgba(139,92,246,0.1)'">
+                🔐 אימות דו-שלבי
+            </button>
             <button onclick="handleLogout()" style="width: 100%; background: rgba(244,63,94,0.1); color: #f43f5e; border: 1px solid rgba(244,63,94,0.2); padding: 9px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(244,63,94,0.2)'" onmouseout="this.style.background='rgba(244,63,94,0.1)'">
                 התנתק 🔴
             </button>
         </div>
     </aside>
 
+    <!-- ===== מודל הגדרת 2FA ===== -->
+    <div id="modal-2fa-setup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100; align-items:center; justify-content:center;">
+        <div style="background:#0d1424; border:1px solid rgba(139,92,246,0.3); border-radius:20px; padding:32px; width:360px; max-width:95vw; text-align:center; color:#e2e8f0;">
+
+            <!-- שלב 1: כפתור התחל -->
+            <div id="2fa-step-start">
+                <div style="font-size:48px; margin-bottom:12px;">🔐</div>
+                <h2 style="font-size:20px; font-weight:900; margin-bottom:8px;">אימות דו-שלבי</h2>
+                <p id="2fa-current-status" style="color:#64748b; font-size:13px; margin-bottom:24px;"></p>
+                <button id="btn-start-setup" onclick="startSetup2FA()" style="width:100%; background:linear-gradient(135deg,#8b5cf6,#6d28d9); color:white; border:none; padding:14px; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; margin-bottom:10px;">
+                    הפעל / חדש QR Code
+                </button>
+                <button id="btn-disable-2fa" onclick="disable2FA()" style="display:none; width:100%; background:rgba(244,63,94,0.1); color:#f43f5e; border:1px solid rgba(244,63,94,0.3); padding:10px; border-radius:12px; font-size:13px; font-weight:700; cursor:pointer; margin-bottom:10px;">
+                    כבה אימות דו-שלבי
+                </button>
+                <button onclick="close2FASetupModal()" style="color:#64748b; font-size:13px; background:none; border:none; cursor:pointer;">← סגור</button>
+            </div>
+
+            <!-- שלב 2: QR code + אימות -->
+            <div id="2fa-step-qr" style="display:none;">
+                <div style="font-size:32px; margin-bottom:8px;">📱</div>
+                <h2 style="font-size:18px; font-weight:900; margin-bottom:6px;">סרוק עם Google Authenticator</h2>
+                <p style="color:#64748b; font-size:12px; margin-bottom:16px;">פתח את האפליקציה ← לחץ + ← סרוק QR</p>
+                <div id="qrcode-container" style="display:flex; justify-content:center; margin-bottom:16px;">
+                    <div id="qrcode" style="background:white; padding:12px; border-radius:12px; display:inline-block;"></div>
+                </div>
+                <p style="color:#64748b; font-size:11px; margin-bottom:4px;">לא מצליח לסרוק? הכנס ידנית:</p>
+                <p id="2fa-secret-text" style="font-family:monospace; font-size:12px; color:#8b5cf6; letter-spacing:2px; margin-bottom:16px; word-break:break-all;"></p>
+                <p style="color:#e2e8f0; font-size:13px; margin-bottom:8px; font-weight:600;">הכנס את הקוד מהאפליקציה לאימות:</p>
+                <input type="text" id="setup-totp-code" inputmode="numeric" maxlength="6" placeholder="123456"
+                       style="width:100%; padding:14px; background:#111827; border:1px solid rgba(139,92,246,0.4); border-radius:12px; text-align:center; font-size:28px; letter-spacing:6px; color:white; margin-bottom:12px; outline:none;"
+                       onkeypress="if(event.key==='Enter') confirmSetup2FA()">
+                <button onclick="confirmSetup2FA()" id="btn-confirm-setup" style="width:100%; background:linear-gradient(135deg,#10b981,#059669); color:white; border:none; padding:14px; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; margin-bottom:10px;">
+                    ✅ אמת והפעל
+                </button>
+                <p id="setup-totp-error" style="color:#f43f5e; font-size:13px; min-height:20px;"></p>
+                <button onclick="show2FAStep('start')" style="color:#64748b; font-size:13px; background:none; border:none; cursor:pointer;">← חזור</button>
+            </div>
+
+            <!-- שלב 3: הצלחה -->
+            <div id="2fa-step-success" style="display:none;">
+                <div style="font-size:64px; margin-bottom:16px;">✅</div>
+                <h2 style="font-size:20px; font-weight:900; color:#10b981; margin-bottom:8px;">הופעל בהצלחה!</h2>
+                <p style="color:#64748b; font-size:13px; margin-bottom:24px;">בכניסה הבאה תתבקש להזין קוד מ-Google Authenticator</p>
+                <button onclick="close2FASetupModal()" style="width:100%; background:linear-gradient(135deg,#10b981,#059669); color:white; border:none; padding:14px; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer;">
+                    סגור
+                </button>
+            </div>
+
+        </div>
+    </div>
+
     <!-- MAIN CONTENT -->
-    <main style="margin-right: 240px; flex: 1; overflow-y: auto; background: var(--bg);">
+    <main id="main-content" style="margin-right: 240px; flex: 1; overflow-y: auto; background: var(--bg);">
         <!-- TOP BAR -->
         <header class="topbar" style="padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10;">
             <h1 id="page-title" style="font-size: 18px; font-weight: 700; color: white;">דשבורד</h1>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <button onclick="loadNotifications()" style="position: relative; padding: 8px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 16px;">
-                    🔔
-                    <span id="notif-badge" style="position: absolute; top: -4px; right: -4px; background: #f43f5e; color: white; font-size: 10px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: none; align-items: center; justify-content: center;">0</span>
-                </button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <!-- Hamburger — mobile only -->
+                <button id="mob-menu-btn" onclick="toggleSidebar()" style="align-items: center; justify-content: center; width: 38px; height: 38px; background: rgba(59,130,246,0.12); color: #93c5fd; border: 1px solid rgba(59,130,246,0.25); border-radius: 10px; font-size: 20px; cursor: pointer;">☰</button>
+                <div id="notif-btn-wrap" style="position: relative;">
+                    <button onclick="toggleNotifDropdown(event)" style="position: relative; padding: 8px 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 16px;">
+                        🔔
+                        <span id="notif-badge" style="position: absolute; top: -4px; right: -4px; background: #f43f5e; color: white; font-size: 10px; font-weight: 700; width: 18px; height: 18px; border-radius: 50%; display: none; align-items: center; justify-content: center;">0</span>
+                    </button>
+                    <!-- Notification Dropdown -->
+                    <div id="notif-dropdown" onclick="event.stopPropagation()">
+                        <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 700; color: white; font-size: 15px;">🔔 התראות</span>
+                            <button onclick="markAllRead()" style="color: #3b82f6; font-size: 12px; font-weight: 600; background: none; border: none; cursor: pointer; padding: 4px 8px; border-radius: 6px;" onmouseover="this.style.background='rgba(59,130,246,0.1)'" onmouseout="this.style.background='none'">סמן הכל כנקרא</button>
+                        </div>
+                        <div id="notif-dropdown-list" style="max-height: 380px; overflow-y: auto; padding: 10px;"></div>
+                    </div>
+                </div>
                 <button onclick="refreshCurrentTab()" style="background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(59,130,246,0.2)'" onmouseout="this.style.background='rgba(59,130,246,0.1)'">
                     🔄 רענן
                 </button>
@@ -282,22 +418,28 @@
 
             <!-- ========== DASHBOARD ========== -->
             <section id="tab-dashboard" class="tab-section active">
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px;">
+                <!-- Status bar -->
+                <div id="dashboard-status" style="display:none; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <span id="dashboard-status-msg" style="color: #fbbf24; font-size: 13px; font-weight: 600;">מתחבר לשרת...</span>
+                    <button onclick="loadDashboard()" style="background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); padding: 5px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;">נסה שוב</button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px;">
                     <div class="stat-card blue" style="text-align: center;">
                         <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">עובדים כעת</p>
-                        <p id="stat-active" style="font-size: 42px; font-weight: 900; color: #3b82f6; line-height: 1;">-</p>
+                        <p id="stat-active" style="font-size: 42px; font-weight: 900; color: #3b82f6; line-height: 1;">...</p>
                     </div>
                     <div class="stat-card green" style="text-align: center;">
                         <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">שעות החודש</p>
-                        <p id="stat-hours" style="font-size: 42px; font-weight: 900; color: #10b981; line-height: 1;">-</p>
+                        <p id="stat-hours" style="font-size: 42px; font-weight: 900; color: #10b981; line-height: 1;">...</p>
                     </div>
                     <div class="stat-card orange" style="text-align: center;">
-                        <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">חריגות שעות</p>
-                        <p id="stat-overtime" style="font-size: 42px; font-weight: 900; color: #f59e0b; line-height: 1;">-</p>
+                        <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">סה"כ עובדים</p>
+                        <p id="stat-total-emp" style="font-size: 42px; font-weight: 900; color: #f59e0b; line-height: 1;">...</p>
                     </div>
                     <div class="stat-card rose" style="text-align: center;">
                         <p style="color: #64748b; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">בקשות ממתינות</p>
-                        <p id="stat-leave" style="font-size: 42px; font-weight: 900; color: #f43f5e; line-height: 1;">-</p>
+                        <p id="stat-leave" style="font-size: 42px; font-weight: 900; color: #f43f5e; line-height: 1;">...</p>
                     </div>
                 </div>
 
@@ -306,8 +448,11 @@
 
                 <!-- Active Workers -->
                 <div class="glass-card" style="padding: 24px;">
-                    <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px; color: white;">⚡ עובדים פעילים כעת</h3>
-                    <div id="active-workers-list"><p style="color: #475569; font-size: 14px;">טוען...</p></div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="font-size: 16px; font-weight: 700; color: white;">⚡ עובדים פעילים כעת</h3>
+                        <button onclick="loadDashboard()" style="background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.2); padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;">🔄 רענן</button>
+                    </div>
+                    <div id="active-workers-list"><p style="color: #475569; font-size: 14px; text-align: center; padding: 20px;">טוען נתונים...</p></div>
                 </div>
             </section>
 
@@ -318,6 +463,7 @@
                     <button onclick="openEmployeeModal()" class="btn-primary">+ הוסף עובד</button>
                 </div>
                 <div class="glass-card" style="overflow: hidden;">
+                    <div class="table-wrap">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -326,6 +472,7 @@
                         </thead>
                         <tbody id="employees-table"></tbody>
                     </table>
+                    </div>
                 </div>
             </section>
 
@@ -339,7 +486,7 @@
                     </div>
                     <button onclick="openScheduleModal()" class="btn-primary">+ תזמן משמרת</button>
                 </div>
-                <div id="schedule-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px;"></div>
+                <div id="schedule-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; overflow-x: auto;"></div>
             </section>
 
             <!-- ========== LEAVE REQUESTS ========== -->
@@ -388,6 +535,7 @@
 
                 <!-- טבלת משמרות מפורטת -->
                 <div class="glass-card" style="overflow: hidden;">
+                    <div class="table-wrap">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -396,6 +544,7 @@
                         </thead>
                         <tbody id="shifts-table"></tbody>
                     </table>
+                    </div>
                 </div>
             </section>
 
@@ -407,8 +556,9 @@
                     <button onclick="loadReport()" class="btn-primary">צור דוח</button>
                     <button onclick="exportCSV()" class="btn-emerald">📥 ייצא CSV</button>
                 </div>
-                <div id="report-summary" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 20px;"></div>
+                <div id="report-summary" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;"></div>
                 <div class="glass-card" style="overflow: hidden;">
+                    <div class="table-wrap">
                     <table class="data-table">
                         <thead>
                             <tr>
@@ -417,6 +567,7 @@
                         </thead>
                         <tbody id="report-table"></tbody>
                     </table>
+                    </div>
                 </div>
             </section>
 
@@ -636,6 +787,9 @@
             <button onclick="saveShiftEdit()" class="btn-primary" style="flex: 1;">שמור</button>
             <button onclick="closeModal('edit-shift-modal')" class="btn-ghost" style="flex: 1;">ביטול</button>
         </div>
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.07);">
+            <button onclick="deleteShift()" class="btn-rose" style="width: 100%; font-size: 13px; padding: 10px;">🗑️ מחק משמרת לצמיתות</button>
+        </div>
     </div>
 </div>
 
@@ -665,13 +819,41 @@
     let notifInterval = null;
 
     // ==================== INIT ====================
+    function isTokenValid(t) {
+        if (!t) return false;
+        try {
+            const payload = JSON.parse(atob(t.split('.')[1]));
+            return payload.exp > Date.now() / 1000;
+        } catch { return false; }
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
         const now = new Date();
         document.getElementById('report-month').value = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
-        if (token && businessId) {
+        if (token && businessId && isTokenValid(token)) {
             showApp();
+        } else {
+            // No valid session — clear stale data and redirect to main page
+            localStorage.removeItem('sm_token');
+            localStorage.removeItem('sm_business_id');
+            localStorage.removeItem('sm_manager_name');
+            window.location.replace('index.html');
         }
+        // Close notification dropdown when clicking anywhere outside it
+        document.addEventListener('click', () => closeNotifDropdown());
     });
+
+    // SECURITY: Escape HTML special characters to prevent XSS.
+    // Use this wrapper for ANY user-controlled string inserted into innerHTML.
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     function apiFetch(path, options = {}) {
         return fetch(`${API}${path}`, {
@@ -681,47 +863,138 @@
                 'Authorization': `Bearer ${token}`,
                 ...(options.headers || {})
             }
+        // SECURITY: intercept 401 — token expired or invalid → force logout
+        }).then(res => {
+            if (res.status === 401) { handleLogout(); }
+            return res;
         });
     }
 
     // ==================== AUTH ====================
-    async function handleLogin() {
-        const passcode = document.getElementById('login-passcode').value.trim();
-        const err = document.getElementById('login-error');
-        if (!passcode) { err.textContent = 'הכנס קוד'; return; }
-        try {
-            const res = await fetch(`${API}/auth/token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ passcode })
-            });
-            const data = await res.json();
-            if (!res.ok) { err.textContent = data.detail || 'קוד שגוי'; return; }
-            if (data.user.role !== 'manager') { err.textContent = 'גישת מנהל בלבד'; return; }
-            token = data.access_token;
-            businessId = data.user.business_id;
-            managerName = data.user.full_name;
-            localStorage.setItem('sm_token', token);
-            localStorage.setItem('sm_business_id', businessId);
-            localStorage.setItem('sm_manager_name', managerName);
-            showApp();
-        } catch (e) { err.textContent = 'שגיאת תקשורת'; }
-    }
-
     function handleLogout() {
         token = null; businessId = null; managerName = '';
         localStorage.removeItem('sm_token');
         localStorage.removeItem('sm_business_id');
         localStorage.removeItem('sm_manager_name');
         if (notifInterval) clearInterval(notifInterval);
-        document.getElementById('login-screen').style.display = 'flex';
-        document.getElementById('main-app').style.display = 'none';
-        document.getElementById('login-passcode').value = '';
-        document.getElementById('login-error').textContent = '';
+        window.location.replace('index.html');
+    }
+
+    // ==================== 2FA SETUP ====================
+    let _setupToken = null;
+
+    function open2FASetupModal() {
+        show2FAStep('start');
+        // בדוק אם 2FA כבר מופעל
+        apiFetch('/auth/2fa-status').then(r => r.json()).then(data => {
+            const statusEl = document.getElementById('2fa-current-status');
+            const disableBtn = document.getElementById('btn-disable-2fa');
+            if (data.is_2fa_enabled) {
+                statusEl.innerHTML = '<span style="color:#10b981">✅ מופעל כרגע</span>';
+                disableBtn.style.display = 'block';
+            } else {
+                statusEl.innerHTML = '<span style="color:#64748b">⭕ לא מופעל</span>';
+                disableBtn.style.display = 'none';
+            }
+        }).catch(() => {});
+        document.getElementById('modal-2fa-setup').style.display = 'flex';
+    }
+
+    function close2FASetupModal() {
+        _setupToken = null;
+        document.getElementById('modal-2fa-setup').style.display = 'none';
+    }
+
+    function show2FAStep(step) {
+        ['start','qr','success'].forEach(s => {
+            document.getElementById(`2fa-step-${s}`).style.display = 'none';
+        });
+        document.getElementById(`2fa-step-${step}`).style.display = 'block';
+    }
+
+    async function startSetup2FA() {
+        const btn = document.getElementById('btn-start-setup');
+        btn.textContent = '⏳ מייצר QR...';
+        btn.disabled = true;
+        try {
+            const res = await apiFetch('/auth/setup-2fa', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) { alert(data.detail || 'שגיאה'); return; }
+
+            _setupToken = data.setup_token;
+            document.getElementById('2fa-secret-text').textContent = data.secret;
+
+            // צור QR code
+            const qrEl = document.getElementById('qrcode');
+            qrEl.innerHTML = '';
+            new QRCode(qrEl, {
+                text: data.provisioning_uri,
+                width: 200, height: 200,
+                colorDark: '#000000', colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+
+            document.getElementById('setup-totp-code').value = '';
+            document.getElementById('setup-totp-error').textContent = '';
+            show2FAStep('qr');
+            setTimeout(() => document.getElementById('setup-totp-code').focus(), 200);
+        } catch {
+            alert('שגיאת תקשורת');
+        } finally {
+            btn.textContent = 'הפעל / חדש QR Code';
+            btn.disabled = false;
+        }
+    }
+
+    async function confirmSetup2FA() {
+        const code = document.getElementById('setup-totp-code').value.trim();
+        const errEl = document.getElementById('setup-totp-error');
+        if (!code || code.length !== 6) { errEl.textContent = 'הכנס קוד בן 6 ספרות'; return; }
+
+        const btn = document.getElementById('btn-confirm-setup');
+        btn.textContent = '⏳ מאמת...';
+        btn.disabled = true;
+        errEl.textContent = '';
+
+        try {
+            const res = await fetch(`${API}/auth/verify-2fa`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pending_token: _setupToken, code })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                errEl.textContent = data.detail || 'קוד שגוי';
+                document.getElementById('setup-totp-code').value = '';
+                document.getElementById('setup-totp-code').focus();
+                return;
+            }
+            show2FAStep('success');
+        } catch {
+            errEl.textContent = 'שגיאת תקשורת';
+        } finally {
+            btn.textContent = '✅ אמת והפעל';
+            btn.disabled = false;
+        }
+    }
+
+    async function disable2FA() {
+        if (!confirm('האם לכבות את האימות הדו-שלבי?')) return;
+        try {
+            const res = await apiFetch('/auth/disable-2fa', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                close2FASetupModal();
+                alert('✅ האימות הדו-שלבי כובה');
+            } else {
+                alert(data.detail || 'שגיאה');
+            }
+        } catch {
+            alert('שגיאת תקשורת');
+        }
     }
 
     function showApp() {
-        document.getElementById('login-screen').style.display = 'none';
         document.getElementById('main-app').style.removeProperty('display');
         document.getElementById('main-app').style.display = 'flex';
         document.getElementById('sidebar-manager').textContent = `👤 ${managerName}`;
@@ -733,9 +1006,29 @@
         loadEmployees();
         loadDashboard();
         notifInterval = setInterval(loadNotifications, 30000);
+        setInterval(() => { if (currentTab === 'dashboard') loadDashboard(); }, 60000);
     }
 
     // ==================== NAVIGATION ====================
+    // ===== MOBILE SIDEBAR =====
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        const isOpen = sidebar.classList.contains('open');
+        if (isOpen) {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+        } else {
+            sidebar.classList.add('open');
+            overlay.classList.add('open');
+        }
+    }
+
+    function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebar-overlay').classList.remove('open');
+    }
+
     function switchTab(tab) {
         document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
         document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
@@ -749,6 +1042,7 @@
             'manage-shifts': 'ניהול משמרות ידני'
         };
         document.getElementById('page-title').textContent = titles[tab] || tab;
+        closeSidebar(); // auto-close sidebar on mobile after nav click
         refreshCurrentTab();
     }
 
@@ -768,21 +1062,34 @@
     function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
     // ==================== DASHBOARD ====================
+    let _dashRetryTimer = null;
     async function loadDashboard() {
+        const statusBar = document.getElementById('dashboard-status');
+        const statusMsg = document.getElementById('dashboard-status-msg');
+        if (_dashRetryTimer) { clearTimeout(_dashRetryTimer); _dashRetryTimer = null; }
+
         try {
-            const [statsRes, workersRes, notifsRes] = await Promise.all([
+            const [statsRes, workersRes, notifsRes, empRes] = await Promise.all([
                 apiFetch(`/dashboard/stats/${businessId}`),
                 apiFetch(`/dashboard/active-workers/${businessId}`),
-                apiFetch(`/notifications/${businessId}`)
+                apiFetch(`/notifications/${businessId}`),
+                apiFetch(`/employees/${businessId}`)
             ]);
-            const stats = await statsRes.json();
-            const workers = await workersRes.json();
-            const notifs = await notifsRes.json();
 
-            document.getElementById('stat-active').textContent = stats.active_count ?? '-';
-            document.getElementById('stat-hours').textContent = stats.total_hours ?? '-';
-            document.getElementById('stat-overtime').textContent = stats.overtime_count ?? '-';
-            document.getElementById('stat-leave').textContent = stats.pending_leave ?? '-';
+            if (!statsRes.ok) throw new Error(`stats ${statsRes.status}`);
+
+            const stats = await statsRes.json();
+            const workers = workersRes.ok ? await workersRes.json() : [];
+            const notifs = notifsRes.ok ? await notifsRes.json() : [];
+            const emps = empRes.ok ? await empRes.json() : [];
+
+            // Hide status bar on success
+            statusBar.style.display = 'none';
+
+            document.getElementById('stat-active').textContent = stats.active_count ?? 0;
+            document.getElementById('stat-hours').textContent = stats.total_hours ?? 0;
+            document.getElementById('stat-total-emp').textContent = emps.length ?? 0;
+            document.getElementById('stat-leave').textContent = stats.pending_leave ?? 0;
 
             // Update leave badge in sidebar
             const badge = document.getElementById('leave-badge');
@@ -794,20 +1101,30 @@
 
             // Active workers
             const container = document.getElementById('active-workers-list');
-            if (!workers.length) { container.innerHTML = '<p style="color: #475569; font-size: 14px;">אין עובדים פעילים כרגע.</p>'; }
-            else {
+            if (!workers.length) {
+                container.innerHTML = '<p style="color: #475569; font-size: 14px; text-align: center; padding: 20px;">אין עובדים פעילים כרגע.</p>';
+            } else {
                 container.innerHTML = workers.map(w => `
                     <div class="worker-card clocked-in">
                         <div>
-                            <span style="font-weight: 700; color: white;">${w.full_name}</span>
-                            <span style="font-size: 13px; color: #64748b; margin-right: 10px;">נכנס ${formatTime(w.clock_in)} · <span style="color: #10b981; font-weight: 700;">${w.hours_so_far} שעות</span></span>
+                            <span style="font-weight: 700; color: white;">${escapeHtml(w.full_name)}</span>
+                            <span style="font-size: 13px; color: #64748b; margin-right: 10px;">נכנס ${formatTime(w.clock_in)} · <span style="color: #10b981; font-weight: 700;">${escapeHtml(w.hours_so_far)} שעות</span></span>
                             ${w.hours_so_far > 8 ? '<span style="background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-right: 6px;">⚠️ חריגה</span>' : ''}
                         </div>
                         <button onclick="forceOut(${w.shift_id})" style="background: rgba(244,63,94,0.1); color: #f43f5e; border: 1px solid rgba(244,63,94,0.2); padding: 7px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer;">🔴 הוצא</button>
                     </div>
                 `).join('');
             }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error('Dashboard load failed:', e);
+            statusBar.style.display = 'flex';
+            statusMsg.textContent = 'השרת מתעורר, מנסה שוב בעוד 15 שניות...';
+            // Auto-retry once after 15 seconds (Render cold start)
+            _dashRetryTimer = setTimeout(() => {
+                statusMsg.textContent = 'מתחבר מחדש...';
+                loadDashboard();
+            }, 15000);
+        }
     }
 
     function renderNotifications(notifs) {
@@ -817,7 +1134,7 @@
         badge.textContent = notifs.length; badge.style.display = 'flex';
         container.innerHTML = notifs.slice(0, 5).map(n => `
             <div class="notif-item">
-                <span style="font-size: 14px; color: #93c5fd; font-weight: 500;">${n.message}</span>
+                <span style="font-size: 14px; color: #93c5fd; font-weight: 500;">${escapeHtml(n.message)}</span>
                 <button onclick="dismissNotif(${n.id})" style="color: #3b82f6; margin-right: 12px; font-size: 20px; line-height: 1; background: none; border: none; cursor: pointer; padding: 0 4px;" onmouseover="this.style.color='#93c5fd'" onmouseout="this.style.color='#3b82f6'">×</button>
             </div>
         `).join('');
@@ -832,8 +1149,68 @@
 
     async function dismissNotif(id) {
         await apiFetch(`/notifications/mark-read/${id}`, { method: 'POST' });
-        loadNotifications();
+        loadNotifDropdown();
         if (currentTab === 'dashboard') loadDashboard();
+    }
+
+    function toggleNotifDropdown(e) {
+        e.stopPropagation();
+        const dd = document.getElementById('notif-dropdown');
+        if (dd.classList.contains('open')) {
+            dd.classList.remove('open');
+        } else {
+            loadNotifDropdown();
+            dd.classList.add('open');
+        }
+    }
+
+    function closeNotifDropdown() {
+        document.getElementById('notif-dropdown')?.classList.remove('open');
+    }
+
+    async function loadNotifDropdown() {
+        try {
+            const res = await apiFetch(`/notifications/${businessId}`);
+            if (res.ok) {
+                const data = await res.json();
+                renderNotifications(data);
+                renderNotifDropdown(data);
+            }
+        } catch {}
+    }
+
+    function renderNotifDropdown(notifs) {
+        const list = document.getElementById('notif-dropdown-list');
+        if (!list) return;
+        if (!notifs.length) {
+            list.innerHTML = '<p style="color: #64748b; text-align: center; padding: 28px 16px; font-size: 14px;">אין התראות חדשות ✅</p>';
+            return;
+        }
+        const typeNav = {
+            registration_pending: { label: '→ אישור עובדים', tab: 'approvals' },
+            leave_pending:        { label: '→ בקשות היעדרות', tab: 'leave' },
+        };
+        list.innerHTML = notifs.map(n => {
+            const nav = typeNav[n.type];
+            return `
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                        <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; flex: 1; margin: 0;">${escapeHtml(n.message)}</p>
+                        <button onclick="dismissNotif(${n.id})" style="color: #475569; background: none; border: none; cursor: pointer; font-size: 20px; line-height: 1; padding: 0; flex-shrink: 0;" onmouseover="this.style.color='#f43f5e'" onmouseout="this.style.color='#475569'" title="סמן כנקרא">×</button>
+                    </div>
+                    ${nav ? `<button onclick="switchTab('${nav.tab}'); closeNotifDropdown();" style="margin-top: 8px; color: #3b82f6; font-size: 12px; font-weight: 700; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 4px 12px; cursor: pointer;">${nav.label}</button>` : ''}
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function markAllRead() {
+        try {
+            await apiFetch(`/notifications/mark-all-read/${businessId}`, { method: 'POST' });
+            closeNotifDropdown();
+            loadNotifications();
+            if (currentTab === 'dashboard') loadDashboard();
+        } catch {}
     }
 
     async function forceOut(shiftId) {
@@ -850,11 +1227,11 @@
             if (!tbody) return;
             tbody.innerHTML = employees.map(e => `
                 <tr>
-                    <td style="font-weight: 600; color: white;">${e.full_name}</td>
+                    <td style="font-weight: 600; color: white;">${escapeHtml(e.full_name)}</td>
                     <td><span class="${e.role === 'manager' ? 'badge-blue' : 'badge-gray'}">${e.role === 'manager' ? 'מנהל' : 'עובד'}</span></td>
-                    <td style="font-family: monospace; color: #64748b;">${e.passcode}</td>
+                    <td style="font-family: monospace; color: #64748b;">${escapeHtml(e.passcode)}</td>
                     <td style="font-weight: 700; color: #10b981;">₪${e.hourly_rate || 0}</td>
-                    <td style="color: #64748b;">${e.phone || '-'}</td>
+                    <td style="color: #64748b;">${escapeHtml(e.phone) || '-'}</td>
                     <td><span class="${e.is_active ? 'badge-green' : 'badge-rose'}">${e.is_active ? 'פעיל' : 'לא פעיל'}</span></td>
                     <td>
                         <button onclick="openEmployeeModal(${e.id})" style="color: #3b82f6; font-weight: 700; font-size: 13px; background: none; border: none; cursor: pointer; margin-left: 12px;">עריכה</button>
@@ -953,7 +1330,7 @@
         document.getElementById('week-label').textContent = `${formatDateISO(from)} — ${formatDateISO(to)}`;
 
         try {
-            const res = await apiFetch(`/schedule/${businessId}?from_date=${from.toISOString()}&to_date=${to.toISOString()}`);
+            const res = await apiFetch(`/schedule/${businessId}?from_date=${from.toISOString().slice(0,19)}&to_date=${to.toISOString().slice(0,19)}`);
             const shifts = await res.json();
             const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
             const grid = document.getElementById('schedule-grid');
@@ -971,9 +1348,9 @@
                     <p style="font-weight: 700; font-size: 12px; color: #64748b; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px; margin-bottom: 8px;">${info.label}</p>
                     ${info.shifts.map(s => `
                         <div style="background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 8px; margin-bottom: 6px; font-size: 12px;">
-                            <p style="font-weight: 700; color: #93c5fd;">${s.full_name}</p>
+                            <p style="font-weight: 700; color: #93c5fd;">${escapeHtml(s.full_name)}</p>
                             <p style="color: #3b82f6;">${formatTime(s.start_time)} - ${formatTime(s.end_time)}</p>
-                            ${s.notes ? `<p style="color: #64748b;">${s.notes}</p>` : ''}
+                            ${s.notes ? `<p style="color: #64748b;">${escapeHtml(s.notes)}</p>` : ''}
                             <button onclick="deleteScheduledShift(${s.id})" style="color: #f43f5e; font-size: 11px; background: none; border: none; cursor: pointer; margin-top: 4px; font-weight: 700;">× מחק</button>
                         </div>
                     `).join('')}
@@ -1044,14 +1421,14 @@
                 <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
                         <div>
-                            <span style="font-weight: 700; font-size: 16px; color: white;">${r.full_name}</span>
-                            <span style="font-size: 13px; color: #64748b; margin-right: 10px;">${typeLabels[r.leave_type] || r.leave_type}</span>
+                            <span style="font-weight: 700; font-size: 16px; color: white;">${escapeHtml(r.full_name)}</span>
+                            <span style="font-size: 13px; color: #64748b; margin-right: 10px;">${escapeHtml(typeLabels[r.leave_type] || r.leave_type)}</span>
                         </div>
                         <span class="${leaveStatusClass[r.status] || 'badge-gray'}">${statusLabels[r.status] || r.status}</span>
                     </div>
                     <p style="color: #64748b; font-size: 13px; margin-bottom: 4px;">📅 ${r.start_date} → ${r.end_date}</p>
-                    ${r.reason ? `<p style="color: #475569; font-size: 13px; margin-bottom: 8px;">"${r.reason}"</p>` : ''}
-                    ${r.manager_note ? `<p style="color: #475569; font-size: 12px; font-style: italic; margin-bottom: 8px;">הערת מנהל: ${r.manager_note}</p>` : ''}
+                    ${r.reason ? `<p style="color: #475569; font-size: 13px; margin-bottom: 8px;">"${escapeHtml(r.reason)}"</p>` : ''}
+                    ${r.manager_note ? `<p style="color: #475569; font-size: 12px; font-style: italic; margin-bottom: 8px;">הערת מנהל: ${escapeHtml(r.manager_note)}</p>` : ''}
                     ${r.status === 'pending' ? `
                         <div style="display: flex; gap: 8px; margin-top: 12px;">
                             <button onclick="promptLeaveAction(${r.id}, 'approved')" class="btn-emerald" style="font-size: 13px; padding: 8px 16px;">✅ אשר</button>
@@ -1116,7 +1493,7 @@
             }
             document.getElementById('shifts-table').innerHTML = shifts.map(s => `
                 <tr>
-                    <td style="font-weight: 600; color: white;">${s.full_name}</td>
+                    <td style="font-weight: 600; color: white;">${escapeHtml(s.full_name)}</td>
                     <td style="font-size: 13px; color: #64748b;">${formatDateTime(s.clock_in)}</td>
                     <td style="font-size: 13px; color: #64748b;">${s.clock_out ? formatDateTime(s.clock_out) : '<span style="color: #10b981; font-weight: 700;">פעיל</span>'}</td>
                     <td style="font-weight: 700; color: #3b82f6;">${s.total_hours != null ? s.total_hours + ' ש׳' : '-'}</td>
@@ -1140,10 +1517,10 @@
             const active = data.filter(e => e.total_shifts > 0);
             if (!active.length) { container.innerHTML = ''; return; }
             container.innerHTML = active.map(e => `
-                <div class="bg-white rounded-2xl border border-slate-200 p-4 text-center shadow-sm">
-                    <p class="font-bold text-slate-700 text-sm mb-1">${e.full_name}</p>
-                    <p class="text-3xl font-black text-blue-600">${e.total_hours}</p>
-                    <p class="text-xs text-slate-400 mt-1">שעות · ${e.total_shifts} משמרות</p>
+                <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 16px; text-align: center;">
+                    <p style="font-weight: 700; font-size: 13px; color: white; margin-bottom: 4px;">${escapeHtml(e.full_name)}</p>
+                    <p style="font-size: 30px; font-weight: 900; color: #3b82f6;">${e.total_hours}</p>
+                    <p style="font-size: 11px; color: #64748b; margin-top: 4px;">שעות · ${e.total_shifts} משמרות</p>
                 </div>
             `).join('');
         } catch (e) {}
@@ -1173,6 +1550,16 @@
         } catch (e) {}
     }
 
+    async function deleteShift() {
+        const id = document.getElementById('edit-shift-id').value;
+        if (!confirm('למחוק את המשמרת לצמיתות? לא ניתן לשחזר.')) return;
+        try {
+            const res = await apiFetch(`/shifts/${id}`, { method: 'DELETE' });
+            if (res.ok) { closeModal('edit-shift-modal'); loadAllShifts(); }
+            else { const d = await res.json(); alert(d.detail || 'שגיאה'); }
+        } catch (e) {}
+    }
+
     // ==================== REPORTS ====================
     async function loadReport() {
         const monthVal = document.getElementById('report-month').value;
@@ -1193,7 +1580,7 @@
             `;
             const rows = data.employees.map(e => `
                 <tr>
-                    <td style="font-weight: 600; color: white;">${e.full_name}</td>
+                    <td style="font-weight: 600; color: white;">${escapeHtml(e.full_name)}</td>
                     <td><span class="${e.role === 'manager' ? 'badge-blue' : 'badge-gray'}">${e.role === 'manager' ? 'מנהל' : 'עובד'}</span></td>
                     <td style="text-align: center; color: #94a3b8;">${e.total_shifts}</td>
                     <td style="font-weight: 700; color: #3b82f6;">${e.total_hours}</td>
@@ -1235,13 +1622,13 @@
             container.innerHTML = branches.map(b => `
                 <div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 22px; transition: border-color 0.2s;" onmouseover="this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.07)'">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-                        <h3 style="font-weight: 700; font-size: 16px; color: white;">🏢 ${b.name}</h3>
+                        <h3 style="font-weight: 700; font-size: 16px; color: white;">🏢 ${escapeHtml(b.name)}</h3>
                         <div style="display: flex; gap: 10px;">
                             <button onclick="openBranchModal(${b.id})" style="color: #3b82f6; font-size: 13px; font-weight: 700; background: none; border: none; cursor: pointer;">עריכה</button>
                             <button onclick="deleteBranch(${b.id})" style="color: #f43f5e; font-size: 13px; font-weight: 700; background: none; border: none; cursor: pointer;">מחק</button>
                         </div>
                     </div>
-                    ${b.address ? `<p style="color: #64748b; font-size: 13px;">📍 ${b.address}</p>` : ''}
+                    ${b.address ? `<p style="color: #64748b; font-size: 13px;">📍 ${escapeHtml(b.address)}</p>` : ''}
                 </div>
             `).join('');
         } catch (e) {}
@@ -1292,11 +1679,10 @@
         const box = document.getElementById('ai-response');
         const input = document.getElementById('ai-input');
 
-        const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
-        const bId = storedUser.business_id || 1;
+        const bId = parseInt(businessId) || 1;
 
-        // הוסף את שאלת המשתמש לתצוגה
-        box.innerHTML += `<div style="text-align:right;margin:8px 0;color:#93c5fd;"><strong>אתה:</strong> ${q}</div>`;
+        // SECURITY: Use escapeHtml on user input before injecting into innerHTML
+        box.innerHTML += `<div style="text-align:right;margin:8px 0;color:#93c5fd;"><strong>אתה:</strong> ${escapeHtml(q)}</div>`;
         box.innerHTML += `<div id="ai-thinking" style="color:#6b7280;">🤖 חושב...</div>`;
         box.scrollTop = box.scrollHeight;
         input.value = '';
@@ -1323,7 +1709,8 @@
 
             // הסר "חושב..." והצג תשובה
             document.getElementById('ai-thinking')?.remove();
-            box.innerHTML += `<div style="margin:8px 0;color:#d1fae5;"><strong>🤖 AI:</strong> ${answer.replace(/\n/g, '<br>')}</div>`;
+            // SECURITY: escape AI answer then safely restore newlines as <br>
+            box.innerHTML += `<div style="margin:8px 0;color:#d1fae5;"><strong>🤖 AI:</strong> ${escapeHtml(answer).replace(/\n/g, '<br>')}</div>`;
             box.scrollTop = box.scrollHeight;
         } catch (err) {
             console.error("AI Error:", err);
@@ -1340,8 +1727,8 @@
     // ==================== MANAGE SHIFTS ====================
     function nowLocalISO() {
         const now = new Date();
-        now.setSeconds(0, 0);
-        return now.toISOString().slice(0, 16);
+        const pad = n => String(n).padStart(2, '0');
+        return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
     }
 
     async function loadManageShifts() {
@@ -1355,7 +1742,7 @@
                 <div style="background: var(--surface2); border: 1px solid ${w.clocked_in ? 'rgba(16,185,129,0.3)' : 'var(--border)'}; ${w.clocked_in ? 'border-right: 3px solid #10b981;' : ''} border-radius: 14px; padding: 18px 22px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <p style="font-weight: 700; font-size: 16px; color: white; margin-bottom: 4px;">
-                            ${w.full_name}
+                            ${escapeHtml(w.full_name)}
                             <span class="${w.role === 'manager' ? 'badge-blue' : 'badge-gray'}" style="margin-right: 8px;">${w.role === 'manager' ? 'מנהל' : 'עובד'}</span>
                         </p>
                         ${w.clocked_in
@@ -1472,16 +1859,15 @@
 
             const container = document.getElementById('approvals-list');
             if (!users.length) {
-                container.innerHTML = '<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">אין בקשות ממתינות ✅</div>';
+                container.innerHTML = '<div style="background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 32px; text-align: center; color: #64748b; font-size: 15px;">אין בקשות ממתינות ✅</div>';
                 return;
             }
             container.innerHTML = users.map(u => `
                 <div style="background: var(--surface2); border: 1px solid rgba(59,130,246,0.25); border-right: 3px solid #3b82f6; border-radius: 16px; padding: 22px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
-                        <p style="font-weight: 700; font-size: 18px; color: white; margin-bottom: 4px;">${u.full_name}</p>
-                        ${u.phone ? `<p style="color: #64748b; font-size: 13px;">📞 ${u.phone}</p>` : ''}
-                        ${u.email ? `<p style="color: #64748b; font-size: 13px;">📧 ${u.email}</p>` : ''}
-                        <p style="color: #475569; font-size: 12px; margin-top: 4px;">קוד אישי: <span style="font-family: monospace;">${u.passcode}</span></p>
+                        <p style="font-weight: 700; font-size: 18px; color: white; margin-bottom: 4px;">${escapeHtml(u.full_name)}</p>
+                        ${u.phone ? `<p style="color: #64748b; font-size: 13px;">📞 ${escapeHtml(u.phone)}</p>` : ''}
+                        ${u.email ? `<p style="color: #64748b; font-size: 13px;">📧 ${escapeHtml(u.email)}</p>` : ''}
                     </div>
                     <div style="display: flex; gap: 10px;">
                         <button onclick="handleApproval(${u.id}, 'approve')" class="btn-emerald" style="padding: 10px 22px;">✅ אשר</button>

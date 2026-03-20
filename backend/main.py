@@ -479,6 +479,21 @@ def verify_2fa(body: schemas.TwoFactorVerifyRequest, db: Session = Depends(get_d
     }}
 
 
+@app.get("/auth/2fa-status")
+def get_2fa_status(current_user: models.User = Depends(get_current_user)):
+    """Returns whether 2FA is currently enabled for the authenticated user."""
+    return {"is_2fa_enabled": bool(current_user.is_2fa_enabled)}
+
+
+@app.post("/auth/disable-2fa")
+def disable_2fa(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Disables 2FA for the authenticated user and clears the TOTP secret."""
+    current_user.is_2fa_enabled = False
+    current_user.totp_secret = None
+    db.commit()
+    return {"success": True, "message": "אימות דו-שלבי כובה"}
+
+
 @app.post("/users/login", response_model=schemas.UserResponse)
 def login(action: schemas.ShiftAction, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.passcode == action.passcode).first()
