@@ -105,6 +105,25 @@ def get_current_user(authorization: str = Header(None), db: Session = Depends(ge
     return user
 
 
+def get_setup_user(authorization: str = Header(None), db: Session = Depends(get_db)) -> models.User:
+    """
+    Like get_current_user but also accepts 'setup_required' tokens —
+    used only by /auth/setup-2fa so a manager can set up 2FA right after first login.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="לא מורשה — נדרש טוקן")
+    token = authorization.split(" ", 1)[1]
+    payload = auth.verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="טוקן לא תקף או פג תוקף")
+    if payload.get("scope") in ("2fa_pending", "2fa_setup"):
+        raise HTTPException(status_code=401, detail="טוקן לא תקף לפעולה זו")
+    user = db.query(models.User).filter(models.User.id == payload["user_id"]).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="משתמש לא נמצא")
+    return user
+
+
 def run_migrations():
     migrations = [
         "ALTER TABLE users ADD COLUMN hourly_rate REAL DEFAULT 0.0",
@@ -375,14 +394,16 @@ def login_token(action: schemas.ShiftAction, db: Session = Depends(get_db)):
     if user.approval_status == "rejected":
         raise HTTPException(status_code=403, detail="הבקשה נדחתה על ידי המנהל")
 
-    # --- 2FA gate ---
-    if user.is_2fa_enabled and user.totp_secret:
-        # Do NOT issue the full JWT yet. Return a short-lived challenge token instead.
-        pending_token = auth.create_pending_token({
-            "user_id": user.id,
-            "scope": "2fa_pending"
-        })
-        return {"requires_2fa": True, "pending_token": pending_token}
+    # --- 2FA gate (managers only) ---
+    if user.role == "manager":
+        if user.is_2fa_enabled and user.totp_secret:
+            # 2FA active → challenge with 6-digit code
+            pending_token = auth.create_pending_token({"user_id": user.id, "scope": "2fa_pending"})
+            return {"requires_2fa": True, "pending_token": pending_token}
+        else:
+            # 2FA not set up yet → force mandatory setup before entering admin
+            pending_token = auth.create_pending_token({"user_id": user.id, "scope": "setup_required"})
+            return {"requires_2fa_setup": True, "pending_token": pending_token}
 
     token = auth.create_access_token({
         "user_id": user.id,
@@ -393,7 +414,7 @@ def login_token(action: schemas.ShiftAction, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/setup-2fa", response_model=schemas.TwoFactorSetupResponse)
-def setup_2fa(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+def setup_2fa(current_user: models.User = Depends(get_setup_user), db: Session = Depends(get_db)):
     """
     Generates a new TOTP secret for the authenticated user and returns:
     - provisioning_uri: encode as QR code in the frontend
@@ -455,10 +476,19 @@ def verify_2fa(body: schemas.TwoFactorVerifyRequest, db: Session = Depends(get_d
     scope = payload["scope"]
 
     if scope == "2fa_setup":
-        # Activation: code is correct, now officially enable 2FA
+        # Activation: code is correct → enable 2FA and issue full JWT so user enters directly
         user.is_2fa_enabled = True
         db.commit()
-        return {"success": True, "message": "אימות דו-שלבי הופעל בהצלחה"}
+        token = auth.create_access_token({
+            "user_id": user.id,
+            "business_id": user.business_id,
+            "role": user.role
+        })
+        return {"access_token": token, "token_type": "bearer", "setup_complete": True, "user": {
+            "id": user.id, "business_id": user.business_id, "full_name": user.full_name,
+            "role": user.role, "hourly_rate": user.hourly_rate, "phone": user.phone,
+            "email": user.email, "branch_id": user.branch_id, "is_active": user.is_active,
+        }}
 
     # Login flow: issue the full access token
     token = auth.create_access_token({

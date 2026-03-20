@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ShiftManager | שעון נוכחות</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700;900&display=swap" rel="stylesheet">
     <style> body { font-family: 'Heebo', sans-serif; } </style>
 </head>
@@ -94,6 +95,43 @@
         </div>
     </div>
 
+    <!-- ===== מסך הגדרת 2FA חובה ===== -->
+    <div id="screen-setup-2fa" style="display:none" class="text-center">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 w-96 max-w-full">
+
+            <!-- שלב א: QR code -->
+            <div id="setup-step-qr">
+                <div class="text-4xl mb-2">🔐</div>
+                <h2 class="text-xl font-black text-slate-800 mb-1">הגדרת אבטחה חובה</h2>
+                <p class="text-slate-500 text-sm mb-4">סרוק עם Google Authenticator כדי להמשיך</p>
+                <div class="flex justify-center mb-3">
+                    <div id="login-qrcode" class="bg-white p-3 rounded-xl border border-slate-200 inline-block"></div>
+                </div>
+                <p class="text-slate-400 text-xs mb-1">קוד ידני:</p>
+                <p id="login-2fa-secret" class="font-mono text-xs text-purple-600 tracking-widest mb-4 break-all"></p>
+                <p class="text-slate-700 text-sm font-semibold mb-2">הכנס קוד מהאפליקציה:</p>
+                <input type="text" id="login-setup-code" inputmode="numeric" maxlength="6" placeholder="123456"
+                       class="w-full p-4 bg-slate-100 rounded-xl text-center text-3xl tracking-widest mb-3 outline-none focus:ring-2 focus:ring-purple-500 border border-slate-200"
+                       onkeypress="if(event.key==='Enter') confirmLoginSetup2FA()">
+                <button onclick="confirmLoginSetup2FA()" id="btn-login-confirm-2fa"
+                        class="w-full bg-purple-600 text-white font-bold py-4 rounded-xl hover:bg-purple-700 transition-all text-lg mb-2">
+                    ✅ אמת וכנס
+                </button>
+                <p id="login-setup-error" class="text-rose-500 text-sm font-bold min-h-[20px]"></p>
+                <button onclick="showScreen('screen-manager-login')" class="mt-2 text-slate-400 text-sm hover:text-slate-600">
+                    ← חזור
+                </button>
+            </div>
+
+            <!-- שלב ב: טעינה -->
+            <div id="setup-step-loading" style="display:none">
+                <div class="text-5xl mb-4">⏳</div>
+                <p class="text-slate-600 font-bold">מייצר QR code...</p>
+            </div>
+
+        </div>
+    </div>
+
     <!-- ===== מודל 2FA ===== -->
     <div id="modal-2fa" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:50;"
          class="flex items-center justify-center">
@@ -143,7 +181,8 @@
 <script>
     const API = "https://shiftmanager-backend-n0ix.onrender.com";
     let confirmTimer = null;
-    let _pendingToken = null;  // holds the short-lived 2FA challenge token during login
+    let _pendingToken = null;      // 2FA login challenge token
+    let _setupPendingToken = null; // mandatory 2FA setup token (first login)
 
     // נקה שדות פסקוד בטעינת הדף — מונע אוטו-פיל של הדפדפן
     // + warm-up ping: מעיר את שרת Render ברקע כדי לקצר את זמן ההמתנה בכניסה
@@ -162,7 +201,7 @@
     }, 1000);
 
     function showScreen(id) {
-        ['screen-main','screen-clock','screen-confirm','screen-manager-login'].forEach(s => {
+        ['screen-main','screen-clock','screen-confirm','screen-manager-login','screen-setup-2fa'].forEach(s => {
             document.getElementById(s).style.display = 'none';
         });
         document.getElementById(id).style.display = 'block';
@@ -289,12 +328,15 @@
 
             if (!tokenRes.ok) { errEl.textContent = tokenData.detail || 'שגיאה'; return; }
 
-            if (tokenData.requires_2fa) {
-                // Server wants 2FA — save the pending token and show the modal
+            if (tokenData.requires_2fa_setup) {
+                // מנהל ללא 2FA — חייב להגדיר עכשיו
+                _setupPendingToken = tokenData.pending_token;
+                await openMandatory2FASetup();
+            } else if (tokenData.requires_2fa) {
+                // יש 2FA — הכנס קוד מהאפליקציה
                 _pendingToken = tokenData.pending_token;
                 open2FAModal();
             } else {
-                // No 2FA — log in directly
                 finalizeLogin(tokenData, user);
             }
         } catch {
@@ -304,6 +346,81 @@
         } finally {
             btn.disabled = false;
             btn.textContent = 'כניסה';
+        }
+    }
+
+    async function openMandatory2FASetup() {
+        // הצג מסך טעינה
+        document.getElementById('setup-step-qr').style.display = 'none';
+        document.getElementById('setup-step-loading').style.display = 'block';
+        showScreen('screen-setup-2fa');
+
+        try {
+            const res = await fetch(`${API}/auth/setup-2fa`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${_setupPendingToken}`
+                }
+            });
+            const data = await res.json();
+            if (!res.ok) { alert(data.detail || 'שגיאה'); showScreen('screen-manager-login'); return; }
+
+            // שמור setup token ל-verify
+            _setupPendingToken = data.setup_token;
+
+            // צור QR code
+            const qrEl = document.getElementById('login-qrcode');
+            qrEl.innerHTML = '';
+            new QRCode(qrEl, {
+                text: data.provisioning_uri,
+                width: 180, height: 180,
+                colorDark: '#000000', colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+            document.getElementById('login-2fa-secret').textContent = data.secret;
+            document.getElementById('login-setup-code').value = '';
+            document.getElementById('login-setup-error').textContent = '';
+
+            document.getElementById('setup-step-loading').style.display = 'none';
+            document.getElementById('setup-step-qr').style.display = 'block';
+            setTimeout(() => document.getElementById('login-setup-code').focus(), 200);
+        } catch {
+            alert('שגיאת תקשורת');
+            showScreen('screen-manager-login');
+        }
+    }
+
+    async function confirmLoginSetup2FA() {
+        const code = document.getElementById('login-setup-code').value.trim();
+        const errEl = document.getElementById('login-setup-error');
+        if (!code || code.length !== 6) { errEl.textContent = 'הכנס קוד בן 6 ספרות'; return; }
+
+        const btn = document.getElementById('btn-login-confirm-2fa');
+        btn.disabled = true;
+        btn.textContent = '⏳ מאמת...';
+        errEl.textContent = '';
+
+        try {
+            const res = await fetch(`${API}/auth/verify-2fa`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pending_token: _setupPendingToken, code })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                errEl.textContent = data.detail || 'קוד שגוי';
+                document.getElementById('login-setup-code').value = '';
+                document.getElementById('login-setup-code').focus();
+                return;
+            }
+            // 2FA הוגדר + JWT התקבל — כניסה ישירה
+            finalizeLogin(data, data.user);
+        } catch {
+            errEl.textContent = 'שגיאת תקשורת';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '✅ אמת וכנס';
         }
     }
 
